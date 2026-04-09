@@ -1,0 +1,200 @@
+{
+  "format_version": "1.1",
+  "terraform_version": "1.7.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc.main",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "vpc-0abc1234",
+            "cidr_block": "10.0.0.0/16",
+            "tags": { "Name": "main-vpc", "Env": "prod" }
+          }
+        },
+        {
+          "address": "aws_subnet.public_a",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "public_a",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "subnet-0pub1",
+            "vpc_id": "vpc-0abc1234",
+            "cidr_block": "10.0.1.0/24",
+            "availability_zone": "us-east-1a",
+            "tags": { "Name": "public-a" }
+          }
+        },
+        {
+          "address": "aws_subnet.private_a",
+          "mode": "managed",
+          "type": "aws_subnet",
+          "name": "private_a",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "subnet-0priv1",
+            "vpc_id": "vpc-0abc1234",
+            "cidr_block": "10.0.2.0/24",
+            "availability_zone": "us-east-1a",
+            "tags": { "Name": "private-a" }
+          }
+        },
+        {
+          "address": "aws_internet_gateway.igw",
+          "mode": "managed",
+          "type": "aws_internet_gateway",
+          "name": "igw",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "igw-0abc",
+            "vpc_id": "vpc-0abc1234",
+            "tags": { "Name": "main-igw" }
+          }
+        },
+        {
+          "address": "aws_instance.web",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "web",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "i-0abc1234",
+            "ami": "ami-0abcdef1234567890",
+            "instance_type": "t3.micro",
+            "subnet_id": "subnet-0pub1",
+            "tags": { "Name": "web-server", "Role": "frontend" }
+          }
+        },
+        {
+          "address": "aws_instance.app",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "i-0def5678",
+            "ami": "ami-0abcdef1234567890",
+            "instance_type": "t3.small",
+            "subnet_id": "subnet-0priv1",
+            "tags": { "Name": "app-server", "Role": "backend" }
+          }
+        },
+        {
+          "address": "aws_security_group.web_sg",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "web_sg",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 1,
+          "values": {
+            "id": "sg-0abc",
+            "vpc_id": "vpc-0abc1234",
+            "name": "web-sg",
+            "ingress": [
+              { "from_port": 80, "to_port": 80, "protocol": "tcp", "cidr_blocks": ["0.0.0.0/0"] },
+              { "from_port": 443, "to_port": 443, "protocol": "tcp", "cidr_blocks": ["0.0.0.0/0"] }
+            ],
+            "tags": { "Name": "web-sg" }
+          }
+        },
+        {
+          "address": "aws_s3_bucket.assets",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "assets",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "my-assets-bucket",
+            "bucket": "my-assets-bucket",
+            "tags": { "Name": "assets", "Purpose": "static-files" }
+          }
+        },
+        {
+          "address": "aws_db_instance.postgres",
+          "mode": "managed",
+          "type": "aws_db_instance",
+          "name": "postgres",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 2,
+          "values": {
+            "id": "mydb",
+            "identifier": "mydb",
+            "engine": "postgres",
+            "engine_version": "15.4",
+            "instance_class": "db.t3.micro",
+            "db_subnet_group_name": "main-db-subnet-group",
+            "tags": { "Name": "primary-db" }
+          }
+        },
+        {
+          "address": "aws_lambda_function.processor",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "processor",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "event-processor",
+            "function_name": "event-processor",
+            "runtime": "python3.11",
+            "handler": "handler.main",
+            "subnet_ids": ["subnet-0priv1"],
+            "tags": { "Name": "event-processor" }
+          }
+        },
+        {
+          "address": "aws_sqs_queue.events",
+          "mode": "managed",
+          "type": "aws_sqs_queue",
+          "name": "events",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "https://sqs.us-east-1.amazonaws.com/123456789/events",
+            "name": "events",
+            "tags": { "Name": "events-queue" }
+          }
+        },
+        {
+          "address": "aws_iam_role.lambda_exec",
+          "mode": "managed",
+          "type": "aws_iam_role",
+          "name": "lambda_exec",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "id": "lambda-exec-role",
+            "name": "lambda-exec-role",
+            "tags": { "Name": "lambda-exec-role" }
+          }
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    { "address": "aws_vpc.main",            "required_by": [] },
+    { "address": "aws_subnet.public_a",     "required_by": ["aws_vpc.main"] },
+    { "address": "aws_subnet.private_a",    "required_by": ["aws_vpc.main"] },
+    { "address": "aws_internet_gateway.igw","required_by": ["aws_vpc.main"] },
+    { "address": "aws_instance.web",        "required_by": ["aws_subnet.public_a", "aws_security_group.web_sg"] },
+    { "address": "aws_instance.app",        "required_by": ["aws_subnet.private_a", "aws_security_group.web_sg"] },
+    { "address": "aws_security_group.web_sg","required_by": ["aws_vpc.main"] },
+    { "address": "aws_s3_bucket.assets",    "required_by": [] },
+    { "address": "aws_db_instance.postgres","required_by": ["aws_subnet.private_a"] },
+    { "address": "aws_lambda_function.processor", "required_by": ["aws_subnet.private_a", "aws_iam_role.lambda_exec", "aws_sqs_queue.events"] },
+    { "address": "aws_sqs_queue.events",    "required_by": [] },
+    { "address": "aws_iam_role.lambda_exec","required_by": [] }
+  ]
+}
