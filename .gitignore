@@ -1,0 +1,30 @@
+# Binary outputs
+tf-lens
+tf-lens-*
+
+# Test outputs
+test.html
+diff.html
+*.html
+
+# JS bundles — downloaded by `make bundle`, not committed
+# Contributors run `make bundle` locally after cloning
+internal/renderer/js/
+
+# Go build artifacts
+*.test
+coverage.out
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.orig
+
+# GoReleaser
+dist/

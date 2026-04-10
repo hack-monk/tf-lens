@@ -11,6 +11,28 @@ import (
 	tfjson "github.com/hashicorp/terraform-json"
 )
 
+// rawPlanDeps is used to extract the `required_by` field from resource_changes,
+// which the terraform-json library does not expose as a typed field.
+type rawPlanDeps struct {
+	ResourceChanges []struct {
+		Address    string   `json:"address"`
+		RequiredBy []string `json:"required_by"`
+		DependsOn  []string `json:"depends_on"`
+	} `json:"resource_changes"`
+}
+
+// rawConfigDeps extracts depends_on from the plan configuration block.
+type rawConfigDeps struct {
+	Configuration struct {
+		RootModule struct {
+			Resources []struct {
+				Address   string   `json:"address"`
+				DependsOn []string `json:"depends_on"`
+			} `json:"resources"`
+		} `json:"root_module"`
+	} `json:"configuration"`
+}
+
 // Resource is the normalised representation of a single Terraform resource.
 // Both plan and state files are reduced to this common model.
 type Resource struct {
@@ -40,6 +62,7 @@ func ParsePlanFile(path string) ([]Resource, error) {
 		return nil, fmt.Errorf("reading plan file: %w", err)
 	}
 
+	// Use the typed library for planned_values (resource attributes).
 	var plan tfjson.Plan
 	if err := json.Unmarshal(data, &plan); err != nil {
 		return nil, fmt.Errorf("unmarshalling plan JSON: %w", err)
@@ -50,8 +73,9 @@ func ParsePlanFile(path string) ([]Resource, error) {
 		resources = extractFromModule(plan.PlannedValues.RootModule, "")
 	}
 
-	// Attach dependency data from ResourceChanges which has the full dep list.
-	depMap := buildDepMap(plan.ResourceChanges)
+	// The terraform-json library does not expose required_by / depends_on on
+	// ResourceChange. Parse those from the raw JSON directly.
+	depMap := buildDepMapFromRaw(data)
 	for i := range resources {
 		if deps, ok := depMap[resources[i].Address]; ok {
 			resources[i].Dependencies = deps
@@ -93,7 +117,7 @@ func extractFromModule(mod *tfjson.StateModule, modulePrefix string) []Resource 
 			Type:       r.Type,
 			Name:       r.Name,
 			Provider:   providerShortName(r.ProviderName),
-			Attributes: flattenAttributes(r.AttributeValues),
+			Attributes: r.AttributeValues, // already map[string]interface{}
 			Module:     modulePrefix,
 		}
 		res.Tags = extractTags(res.Attributes)
@@ -102,34 +126,47 @@ func extractFromModule(mod *tfjson.StateModule, modulePrefix string) []Resource 
 
 	// Recurse into child modules
 	for _, child := range mod.ChildModules {
-		prefix := child.Address
-		resources = append(resources, extractFromModule(child, prefix)...)
+		resources = append(resources, extractFromModule(child, child.Address)...)
 	}
 
 	return resources
 }
 
-// buildDepMap builds a map[address][]dependency from ResourceChanges.
-func buildDepMap(changes []*tfjson.ResourceChange) map[string][]string {
+// buildDepMapFromRaw extracts dependency data from the raw plan JSON.
+// terraform-json does not expose required_by or depends_on as typed fields,
+// so we unmarshal only the parts we need from the raw bytes.
+func buildDepMapFromRaw(data []byte) map[string][]string {
 	m := make(map[string][]string)
-	for _, rc := range changes {
-		if rc != nil {
-			m[rc.Address] = rc.RequiredBy
+
+	// Try resource_changes[].required_by first (present in some plan formats).
+	var rcd rawPlanDeps
+	if err := json.Unmarshal(data, &rcd); err == nil {
+		for _, rc := range rcd.ResourceChanges {
+			if len(rc.RequiredBy) > 0 {
+				m[rc.Address] = rc.RequiredBy
+			} else if len(rc.DependsOn) > 0 {
+				m[rc.Address] = rc.DependsOn
+			}
 		}
 	}
+
+	// Also try configuration.root_module.resources[].depends_on as a fallback.
+	var cfg rawConfigDeps
+	if err := json.Unmarshal(data, &cfg); err == nil {
+		for _, r := range cfg.Configuration.RootModule.Resources {
+			if _, already := m[r.Address]; !already && len(r.DependsOn) > 0 {
+				m[r.Address] = r.DependsOn
+			}
+		}
+	}
+
 	return m
 }
 
-// flattenAttributes converts tfjson's attribute value map to map[string]any.
-func flattenAttributes(vals map[string]json.RawMessage) map[string]any {
-	out := make(map[string]any, len(vals))
-	for k, v := range vals {
-		var parsed any
-		if err := json.Unmarshal(v, &parsed); err == nil {
-			out[k] = parsed
-		}
-	}
-	return out
+// flattenAttributes is kept for compatibility but is no longer used for plan files.
+// StateResource.AttributeValues is already map[string]interface{} in terraform-json.
+func flattenAttributes(vals map[string]interface{}) map[string]interface{} {
+	return vals
 }
 
 // extractTags pulls the "tags" attribute into a clean map[string]string.
