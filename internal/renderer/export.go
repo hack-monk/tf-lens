@@ -4,8 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
+	iofs "io/fs"
 	"strings"
 	"text/template"
 
@@ -28,17 +27,22 @@ func ExportHTML(w io.Writer, g *graph.Graph, resolver *icons.Resolver) error {
 }
 
 func loadBundledJS() (string, bool) {
-	dir := filepath.Join("internal", "renderer", "js")
+	// Read from the go:embed FS populated by `make bundle`.
+	// Files live at js/<name> inside bundleFS (defined in bundle.go).
+	// If any file is missing (fresh clone, bundle not run yet),
+	// we return ("", false) and the template falls back to CDN tags.
 	files := []string{
-		filepath.Join(dir, "cytoscape.min.js"),
-		filepath.Join(dir, "dagre.min.js"),
-		filepath.Join(dir, "cytoscape-dagre.min.js"),
-		filepath.Join(dir, "cytoscape-node-html-label.min.js"),
+		"cytoscape.min.js",
+		"dagre.min.js",
+		"cytoscape-dagre.min.js",
+		"cytoscape-node-html-label.min.js",
 	}
 	var combined []byte
 	for _, f := range files {
-		b, err := os.ReadFile(f)
+		b, err := iofs.ReadFile(bundleFS, f)
 		if err != nil {
+			// File not present — bundle step hasn't been run yet.
+			// Caller will use CDN fallback (requires internet).
 			return "", false
 		}
 		combined = append(combined, b...)
