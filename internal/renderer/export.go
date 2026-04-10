@@ -307,6 +307,23 @@ body{
 }
 .sp b{color:#1A202C;font-weight:700}
 
+/* ── Diff banner ── */
+#diffbar{
+  position:absolute;top:60px;left:50%;transform:translateX(-50%);
+  display:none;align-items:center;gap:6px;
+  background:rgba(255,255,255,.95);
+  border:1px solid #E2E8F0;border-radius:20px;
+  padding:5px 14px;font-size:11px;font-weight:600;
+  box-shadow:0 2px 8px rgba(0,0,0,.1);
+  z-index:50;pointer-events:none;white-space:nowrap;
+}
+#diffbar.show{display:flex}
+.db-item{display:flex;align-items:center;gap:4px;color:#4A5568}
+.db-added  {color:#276749}
+.db-removed{color:#C53030}
+.db-updated{color:#975A16}
+.db-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
 /* ── Detail panel ── */
 #panel{
   position:absolute;right:0;top:55px;bottom:0;width:280px;
@@ -400,6 +417,15 @@ body{
 <div id="sb">
   <div class="sp" id="sc"></div>
   <div class="sp" id="sh" style="display:none">Press <b>Esc</b> to clear &nbsp;·&nbsp; <b>F</b> to fit</div>
+</div>
+
+<div id="diffbar">
+  <span style="color:#718096;font-size:10px;margin-right:4px">DIFF</span>
+  <span class="db-item db-added"  id="db-a"><span class="db-dot" style="background:#38A169"></span><span id="db-ac">0</span> added</span>
+  <span style="color:#CBD5E0">·</span>
+  <span class="db-item db-removed" id="db-r"><span class="db-dot" style="background:#E53E3E"></span><span id="db-rc">0</span> removed</span>
+  <span style="color:#CBD5E0">·</span>
+  <span class="db-item db-updated" id="db-u"><span class="db-dot" style="background:#D69E2E"></span><span id="db-uc">0</span> changed</span>
 </div>
 
 <div id="panel">
@@ -578,6 +604,23 @@ var lc = cy.nodes().filter(function(n){ return !n.isParent(); }).length;
 var ec = cy.edges().length;
 document.getElementById('sc').innerHTML =
   '<b>'+lc+'</b> resources &nbsp;·&nbsp; <b>'+ec+'</b> connections';
+
+// ── Diff banner — count change types from element data ─────────────────
+var diffCounts = {added:0, removed:0, updated:0};
+ELEMENTS.forEach(function(el){
+  if(el.group==='nodes' && el.data.changeType && el.data.changeType!==''){
+    if(diffCounts[el.data.changeType] !== undefined){
+      diffCounts[el.data.changeType]++;
+    }
+  }
+});
+var hasDiff = diffCounts.added + diffCounts.removed + diffCounts.updated > 0;
+if(hasDiff){
+  document.getElementById('db-ac').textContent = diffCounts.added;
+  document.getElementById('db-rc').textContent = diffCounts.removed;
+  document.getElementById('db-uc').textContent = diffCounts.updated;
+  document.getElementById('diffbar').classList.add('show');
+}
 
 // ── Fit ──────────────────────────────────────────────────────────────────
 function fitG(){ cy.fit(undefined, 60); }
