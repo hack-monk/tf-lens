@@ -11,6 +11,8 @@ TF-Lens parses Terraform plan and state files and renders them as clean, interac
 
 ---
 
+![TF-Lens diagram](docs/Screenshot.png)
+
 ## Why TF-Lens?
 
 | Problem | TF-Lens |
