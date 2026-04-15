@@ -9,6 +9,7 @@ import (
 	"github.com/hack-monk/tf-lens/internal/icons"
 	"github.com/hack-monk/tf-lens/internal/parser"
 	"github.com/hack-monk/tf-lens/internal/renderer"
+	"github.com/hack-monk/tf-lens/internal/threat"
 	"github.com/spf13/cobra"
 )
 
@@ -18,6 +19,7 @@ var (
 	exportOut     string
 	exportIconDir string
 	exportDiff    string
+	exportThreat  bool
 )
 
 var exportCmd = &cobra.Command{
@@ -71,7 +73,27 @@ Examples:
 			fmt.Println()
 		}
 
-		// ── 4. Resolve icons ──────────────────────────────────────────────────
+		// ── 4. Threat modelling (optional) ──────────────────────────────────
+		if exportThreat {
+			findings := threat.Analyse(resources)
+			threat.AnnotateGraph(g, findings)
+
+			// Print threat summary
+			counts := map[string]int{}
+			for _, f := range findings {
+				counts[string(f.Severity)]++
+			}
+			fmt.Println()
+			fmt.Println("🔒  Threat model summary:")
+			if counts["critical"] > 0 { fmt.Printf("    🔴 Critical: %d\n", counts["critical"]) }
+			if counts["high"]     > 0 { fmt.Printf("    🟠 High:     %d\n", counts["high"])     }
+			if counts["medium"]   > 0 { fmt.Printf("    🟡 Medium:   %d\n", counts["medium"])   }
+			if counts["info"]     > 0 { fmt.Printf("    🔵 Info:     %d\n", counts["info"])     }
+			if len(findings)      == 0 { fmt.Println("    ✅ No issues found") }
+			fmt.Println()
+		}
+
+		// ── 5. Resolve icons ──────────────────────────────────────────────────
 		resolver := icons.NewResolver(exportIconDir)
 
 		// ── 5. Write HTML ─────────────────────────────────────────────────────
@@ -102,6 +124,8 @@ func init() {
 	exportCmd.Flags().StringVar(&exportIconDir, "icon-dir", "", "Directory with custom SVG icons (optional)")
 	exportCmd.Flags().StringVar(&exportDiff, "diff", "",
 		"Base plan/state to diff against — auto-detects format (enables diff mode)")
+	exportCmd.Flags().BoolVar(&exportThreat, "threat", false,
+		"Run threat modelling analysis and overlay findings on the diagram")
 }
 
 // parseInput selects plan vs state based on which flag was provided.

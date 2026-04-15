@@ -10,6 +10,7 @@ import (
 	"github.com/hack-monk/tf-lens/internal/graph"
 	"github.com/hack-monk/tf-lens/internal/icons"
 	"github.com/hack-monk/tf-lens/internal/server"
+	"github.com/hack-monk/tf-lens/internal/threat"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +19,8 @@ var (
 	servePlan  string
 	serveState string
 	serveDiff  string
-	serveNoOpen bool
+	serveNoOpen  bool
+	serveThreat  bool
 )
 
 var serveCmd = &cobra.Command{
@@ -62,7 +64,17 @@ Examples:
 			)
 		}
 
-		// ── 4. Start server ───────────────────────────────────────────────────
+		// ── 4. Threat modelling (optional) ──────────────────────────────────
+		if serveThreat {
+			findings := threat.Analyse(resources)
+			threat.AnnotateGraph(g, findings)
+			counts := map[string]int{}
+			for _, f := range findings { counts[string(f.Severity)]++ }
+			fmt.Printf("🔒  Threat model: %d critical, %d high, %d medium, %d info\n",
+				counts["critical"], counts["high"], counts["medium"], counts["info"])
+		}
+
+		// ── 5. Start server ───────────────────────────────────────────────────
 		resolver := icons.NewResolver("") // icons not needed in serve mode
 		srv := server.New(servePort, g, resolver)
 
@@ -85,6 +97,7 @@ func init() {
 	serveCmd.Flags().StringVar(&serveState, "state", "", "Path to terraform.tfstate file")
 	serveCmd.Flags().StringVar(&serveDiff, "diff", "", "Base plan/state to diff against (enables diff mode)")
 	serveCmd.Flags().BoolVar(&serveNoOpen, "no-open", false, "Don't open the browser automatically")
+	serveCmd.Flags().BoolVar(&serveThreat, "threat", false, "Run threat modelling analysis and overlay findings")
 }
 
 // openBrowser opens the given URL in the default browser.

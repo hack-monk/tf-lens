@@ -80,14 +80,16 @@ func abbrev(t string) string {
 // ── Elements ─────────────────────────────────────────────────────────────────
 
 type nodeData struct {
-	ID         string `json:"id"`
-	Label      string `json:"label"`
-	Parent     string `json:"parent,omitempty"`
-	Type       string `json:"type"`
-	Category   string `json:"category"`
-	ChangeType string `json:"changeType,omitempty"`
-	Abbrev     string `json:"abbrev"`
-	IsParent   bool   `json:"isParent"`
+	ID              string   `json:"id"`
+	Label           string   `json:"label"`
+	Parent          string   `json:"parent,omitempty"`
+	Type            string   `json:"type"`
+	Category        string   `json:"category"`
+	ChangeType      string   `json:"changeType,omitempty"`
+	Abbrev          string   `json:"abbrev"`
+	IsParent        bool     `json:"isParent"`
+	ThreatSeverity  string   `json:"threatSeverity,omitempty"`
+	ThreatCodes     []string `json:"threatCodes,omitempty"`
 }
 
 type edgeData struct {
@@ -117,8 +119,10 @@ func buildElements(g *graph.Graph) []element {
 				ID: n.ID, Label: n.Name, Parent: n.ParentID,
 				Type: n.Type, Category: string(n.Category),
 				ChangeType: string(n.ChangeType),
-				Abbrev:     abbrev(n.Type),
-				IsParent:   parentIDs[n.ID],
+				Abbrev:          abbrev(n.Type),
+				IsParent:         parentIDs[n.ID],
+				ThreatSeverity:   n.ThreatMaxSeverity,
+				ThreatCodes:      n.ThreatCodes,
 			},
 		})
 	}
@@ -272,6 +276,17 @@ body{
 .nc--removed{outline:2.5px dashed #E53E3E;outline-offset:2px;opacity:.6}
 .nc--updated{outline:2.5px solid #D69E2E;outline-offset:2px}
 .nc--sel    {outline:3px solid #0073BB;outline-offset:2px;box-shadow:0 0 0 5px rgba(0,115,187,.13)}
+.nc__threat{
+  position:absolute;bottom:4px;right:4px;
+  width:15px;height:15px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:900;color:#FFF;
+  box-shadow:0 1px 3px rgba(0,0,0,.35);line-height:1;
+}
+.nc__threat--critical{background:#C53030}
+.nc__threat--high    {background:#C05621}
+.nc__threat--medium  {background:#975A16}
+.nc__threat--info    {background:#2B6CB0}
 
 /* ── Container label (HTML overlay, sits on top border) ── */
 .cl{
@@ -548,8 +563,14 @@ if(typeof cy.nodeHtmlLabel === 'function'){
       if(d.isParent) return '<div style="display:none"></div>';
       var cat = d.category||'unknown';
       var chg = d.changeType ? ' nc--'+d.changeType : '';
+      var threatBadge = '';
+      if(d.threatSeverity && d.threatSeverity !== ''){
+        var ti = {critical:'!', high:'!', medium:'~', info:'i'}[d.threatSeverity] || '!';
+        threatBadge = '<div class="nc__threat nc__threat--'+d.threatSeverity+'" title="'+d.threatSeverity+'">'+ti+'</div>';
+      }
       return '<div class="nc nc--'+cat+chg+'" data-id="'+d.id+'">'
            + '<div class="nc__b"><span class="nc__t">'+(d.abbrev||'?')+'</span></div>'
+           + threatBadge
            + '</div>';
     }
   }]);
@@ -622,6 +643,25 @@ if(hasDiff){
   document.getElementById('diffbar').classList.add('show');
 }
 
+// ── Threat summary statusbar pill ─────────────────────────────────────
+var tc = {critical:0, high:0, medium:0};
+ELEMENTS.forEach(function(el){
+  if(el.group==='nodes' && el.data.threatSeverity && tc[el.data.threatSeverity]!==undefined){
+    tc[el.data.threatSeverity]++;
+  }
+});
+var totalThreats = tc.critical + tc.high + tc.medium;
+if(totalThreats > 0){
+  var tp = document.createElement('div');
+  tp.className = 'sp';
+  var parts = [];
+  if(tc.critical>0) parts.push('<span style="color:#C53030;font-weight:700">🔴 '+tc.critical+'</span>');
+  if(tc.high>0)     parts.push('<span style="color:#C05621;font-weight:700">🟠 '+tc.high+'</span>');
+  if(tc.medium>0)   parts.push('<span style="color:#975A16;font-weight:700">🟡 '+tc.medium+'</span>');
+  tp.innerHTML = '⚠&nbsp; ' + parts.join(' · ') + ' &nbsp;threats';
+  document.getElementById('sb').appendChild(tp);
+}
+
 // ── Fit ──────────────────────────────────────────────────────────────────
 function fitG(){ cy.fit(undefined, 60); }
 window.fitG = fitG;
@@ -682,6 +722,22 @@ window.openPanel = function(d){
   h += '<div class="pd"></div>';
   h += '<div class="pa"><div class="pk">Address</div><div class="pv"><span class="pc">'+d.id+'</span></div></div>';
   h += '<div class="pa"><div class="pk">Type</div><div class="pv"><span class="pc">'+d.type+'</span></div></div>';
+
+  // ── Threat findings ──────────────────────────────────────────────────
+  if(d.threatSeverity && d.threatSeverity !== '' && d.threatCodes && d.threatCodes.length > 0){
+    var sevColor = {critical:'#C53030',high:'#C05621',medium:'#975A16',info:'#2B6CB0'}[d.threatSeverity]||'#718096';
+    var sevBg    = {critical:'#FFF5F5',high:'#FFFAF0',medium:'#FFFFF0',info:'#EBF8FF'}[d.threatSeverity]||'#F7FAFC';
+    h += '<div class="pd"></div>';
+    h += '<div class="pa"><div class="pk" style="color:'+sevColor+'">⚠ Security findings ('+d.threatCodes.length+')</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">';
+    d.threatCodes.forEach(function(code){
+      h += '<div style="background:'+sevBg+';border:1px solid '+sevColor+';border-radius:4px;'
+         + 'padding:5px 8px;font-size:11px;color:'+sevColor+';font-weight:600;font-family:ui-monospace,monospace">'
+         + code + '</div>';
+    });
+    h += '</div></div>';
+  }
+
   document.getElementById('pb').innerHTML = h;
   document.getElementById('panel').classList.add('open');
 };

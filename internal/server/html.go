@@ -101,6 +101,17 @@ body{
 .nc--removed{outline:2.5px dashed #E53E3E;outline-offset:2px;opacity:.6}
 .nc--updated{outline:2.5px solid #D69E2E;outline-offset:2px}
 .nc--sel    {outline:3px solid #0073BB;outline-offset:2px;box-shadow:0 0 0 5px rgba(0,115,187,.13)}
+.nc__threat{
+  position:absolute;bottom:4px;right:4px;
+  width:15px;height:15px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:900;color:#FFF;
+  box-shadow:0 1px 3px rgba(0,0,0,.35);line-height:1;
+}
+.nc__threat--critical{background:#C53030}
+.nc__threat--high    {background:#C05621}
+.nc__threat--medium  {background:#975A16}
+.nc__threat--info    {background:#2B6CB0}
 .cl{
   position:absolute;white-space:nowrap;background:#FFFFFF;
   border:1.5px solid currentColor;border-radius:4px;
@@ -330,8 +341,14 @@ function buildDiagram(data){
         if(d.isParent) return '<div style="display:none"></div>';
         var cat=d.category||'unknown';
         var chg=d.changeType?' nc--'+d.changeType:'';
+        var threatBadge='';
+        if(d.threatSeverity&&d.threatSeverity!==''){
+          var ti={critical:'!',high:'!',medium:'~',info:'i'}[d.threatSeverity]||'!';
+          threatBadge='<div class="nc__threat nc__threat--'+d.threatSeverity+'" title="'+d.threatSeverity+'">'+ti+'</div>';
+        }
         return '<div class="nc nc--'+cat+chg+'" data-id="'+d.id+'">'
              + '<div class="nc__b"><span class="nc__t">'+(d.abbrev||'?')+'</span></div>'
+             + threatBadge
              + '</div>';
       }
     }]);
@@ -360,6 +377,26 @@ function buildDiagram(data){
   // Statusbar
   var lc=cy.nodes().filter(function(n){ return !n.isParent(); }).length;
   document.getElementById('sc').innerHTML='<b>'+lc+'</b> resources &nbsp;·&nbsp; <b>'+data.edgeCount+'</b> connections';
+
+  // Threat summary pill
+  var tc2={critical:0,high:0,medium:0};
+  elements.forEach(function(el){
+    if(el.group==='nodes'&&el.data.threatSeverity&&tc2[el.data.threatSeverity]!==undefined) tc2[el.data.threatSeverity]++;
+  });
+  var tt=tc2.critical+tc2.high+tc2.medium;
+  // Remove old threat pill if present
+  var oldPill=document.getElementById('threat-pill');
+  if(oldPill) oldPill.remove();
+  if(tt>0){
+    var tp=document.createElement('div');
+    tp.className='sp'; tp.id='threat-pill';
+    var parts2=[];
+    if(tc2.critical>0) parts2.push('<span style="color:#C53030;font-weight:700">🔴 '+tc2.critical+'</span>');
+    if(tc2.high>0)     parts2.push('<span style="color:#C05621;font-weight:700">🟠 '+tc2.high+'</span>');
+    if(tc2.medium>0)   parts2.push('<span style="color:#975A16;font-weight:700">🟡 '+tc2.medium+'</span>');
+    tp.innerHTML='⚠&nbsp; '+parts2.join(' · ')+' &nbsp;threats';
+    document.getElementById('sb').appendChild(tp);
+  }
 
   // Diff banner
   var dc={added:0,removed:0,updated:0};
@@ -450,6 +487,17 @@ window.openPanel=function(d){
   h+='<div class="pd"></div>';
   h+='<div class="pa"><div class="pk">Address</div><div class="pv"><span class="pc">'+d.id+'</span></div></div>';
   h+='<div class="pa"><div class="pk">Type</div><div class="pv"><span class="pc">'+d.type+'</span></div></div>';
+  if(d.threatSeverity&&d.threatSeverity!==''&&d.threatCodes&&d.threatCodes.length>0){
+    var sc2={critical:'#C53030',high:'#C05621',medium:'#975A16',info:'#2B6CB0'}[d.threatSeverity]||'#718096';
+    var sb2={critical:'#FFF5F5',high:'#FFFAF0',medium:'#FFFFF0',info:'#EBF8FF'}[d.threatSeverity]||'#F7FAFC';
+    h+='<div class="pd"></div>';
+    h+='<div class="pa"><div class="pk" style="color:'+sc2+'">⚠ Security findings ('+d.threatCodes.length+')</div>';
+    h+='<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">';
+    d.threatCodes.forEach(function(code){
+      h+='<div style="background:'+sb2+';border:1px solid '+sc2+';border-radius:4px;padding:5px 8px;font-size:11px;color:'+sc2+';font-weight:600;font-family:ui-monospace,monospace">'+code+'</div>';
+    });
+    h+='</div></div>';
+  }
   document.getElementById('pb').innerHTML=h;
   document.getElementById('panel').classList.add('open');
 };

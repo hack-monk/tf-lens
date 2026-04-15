@@ -44,6 +44,9 @@ type Node struct {
 	ParentID     string            // ID of the compound (container) node, if any
 	Module       string            // Terraform module path
 	ChangeType   ChangeType        // Set by diff package
+	// Threat fields — populated by threat.AnnotateGraph()
+	ThreatCodes       []string // e.g. ["SG003", "RDS001"]
+	ThreatMaxSeverity string   // "critical" | "high" | "medium" | "info"
 }
 
 // Edge represents a dependency between two nodes.

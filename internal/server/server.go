@@ -111,14 +111,16 @@ type element struct {
 }
 
 type nodeData struct {
-	ID         string `json:"id"`
-	Label      string `json:"label"`
-	Parent     string `json:"parent,omitempty"`
-	Type       string `json:"type"`
-	Category   string `json:"category"`
-	ChangeType string `json:"changeType,omitempty"`
-	Abbrev     string `json:"abbrev"`
-	IsParent   bool   `json:"isParent"`
+	ID             string   `json:"id"`
+	Label          string   `json:"label"`
+	Parent         string   `json:"parent,omitempty"`
+	Type           string   `json:"type"`
+	Category       string   `json:"category"`
+	ChangeType     string   `json:"changeType,omitempty"`
+	Abbrev         string   `json:"abbrev"`
+	IsParent       bool     `json:"isParent"`
+	ThreatSeverity string   `json:"threatSeverity,omitempty"`
+	ThreatCodes    []string `json:"threatCodes,omitempty"`
 }
 
 type edgeData struct {

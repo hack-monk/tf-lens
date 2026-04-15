@@ -50,8 +50,10 @@ func buildElements(g *graph.Graph) []element {
 				ID: n.ID, Label: n.Name, Parent: n.ParentID,
 				Type: n.Type, Category: string(n.Category),
 				ChangeType: string(n.ChangeType),
-				Abbrev:     getAbbrev(n.Type),
-				IsParent:   parentIDs[n.ID],
+				Abbrev:         getAbbrev(n.Type),
+				IsParent:        parentIDs[n.ID],
+				ThreatSeverity:  n.ThreatMaxSeverity,
+				ThreatCodes:     n.ThreatCodes,
 			},
 		})
 	}
