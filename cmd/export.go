@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/hack-monk/tf-lens/internal/cost"
 	"github.com/hack-monk/tf-lens/internal/diff"
 	"github.com/hack-monk/tf-lens/internal/graph"
 	"github.com/hack-monk/tf-lens/internal/icons"
@@ -20,6 +21,7 @@ var (
 	exportIconDir string
 	exportDiff    string
 	exportThreat  bool
+	exportCost    string
 )
 
 var exportCmd = &cobra.Command{
@@ -93,10 +95,26 @@ Examples:
 			fmt.Println()
 		}
 
-		// ── 5. Resolve icons ──────────────────────────────────────────────────
+		// ── 5. Cost overlay (optional) ──────────────────────────────────────
+		if exportCost != "" {
+			costs, err := resolveCosts(exportCost)
+			if err != nil {
+				return fmt.Errorf("cost overlay: %w", err)
+			}
+			cost.AnnotateGraph(g, costs)
+
+			total := cost.TotalMonthlyCost(costs)
+			fmt.Println()
+			fmt.Println("💰  Cost estimate:")
+			fmt.Printf("    Monthly total: %s/mo\n", cost.FormatCost(total))
+			fmt.Printf("    Resources with cost: %d\n", len(costs))
+			fmt.Println()
+		}
+
+		// ── 6. Resolve icons ──────────────────────────────────────────────────
 		resolver := icons.NewResolver(exportIconDir)
 
-		// ── 5. Write HTML ─────────────────────────────────────────────────────
+		// ── 7. Write HTML ─────────────────────────────────────────────────────
 		outPath := exportOut
 		if outPath == "" {
 			outPath = "diagram.html"
@@ -126,6 +144,26 @@ func init() {
 		"Base plan/state to diff against — auto-detects format (enables diff mode)")
 	exportCmd.Flags().BoolVar(&exportThreat, "threat", false,
 		"Run threat modelling analysis and overlay findings on the diagram")
+	exportCmd.Flags().StringVar(&exportCost, "cost", "",
+		"Cost overlay: path to Infracost JSON file, or Terraform directory to auto-run infracost")
+}
+
+// resolveCosts handles the --cost flag: if the path is a JSON file, parse it
+// directly; if it's a directory, run infracost breakdown against it.
+func resolveCosts(path string) ([]cost.ResourceCost, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot access %q: %w", path, err)
+	}
+
+	if info.IsDir() {
+		// Directory → run infracost CLI
+		fmt.Printf("🔄  Running infracost breakdown on %s …\n", path)
+		return cost.RunBreakdown(path)
+	}
+
+	// File → try parsing as Infracost JSON
+	return cost.ParseFile(path)
 }
 
 // parseInput selects plan vs state based on which flag was provided.

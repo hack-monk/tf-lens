@@ -119,8 +119,18 @@ type nodeData struct {
 	ChangeType     string   `json:"changeType,omitempty"`
 	Abbrev         string   `json:"abbrev"`
 	IsParent       bool     `json:"isParent"`
-	ThreatSeverity string   `json:"threatSeverity,omitempty"`
-	ThreatCodes    []string `json:"threatCodes,omitempty"`
+	ThreatSeverity string        `json:"threatSeverity,omitempty"`
+	ThreatCodes    []string      `json:"threatCodes,omitempty"`
+	ThreatFindings []findingData `json:"threatFindings,omitempty"`
+	MonthlyCost    float64       `json:"monthlyCost,omitempty"`
+}
+
+type findingData struct {
+	Code        string `json:"code"`
+	Severity    string `json:"severity"`
+	Title       string `json:"title"`
+	Detail      string `json:"detail"`
+	Remediation string `json:"remediation"`
 }
 
 type edgeData struct {

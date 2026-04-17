@@ -15,6 +15,7 @@ func AnnotateGraph(g *graph.Graph, findings []Finding) {
 		}
 
 		var codes []string
+		var detailed []graph.NodeFinding
 		maxSev := SeverityInfo
 
 		for _, f := range nodeFindings {
@@ -22,9 +23,17 @@ func AnnotateGraph(g *graph.Graph, findings []Finding) {
 			if f.Severity.Weight() > maxSev.Weight() {
 				maxSev = f.Severity
 			}
+			detailed = append(detailed, graph.NodeFinding{
+				Code:        f.Code,
+				Severity:    string(f.Severity),
+				Title:       f.Title,
+				Detail:      f.Detail,
+				Remediation: f.Remediation,
+			})
 		}
 
 		node.ThreatCodes = codes
 		node.ThreatMaxSeverity = string(maxSev)
+		node.ThreatFindings = detailed
 	}
 }

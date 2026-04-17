@@ -31,6 +31,16 @@ const (
 	ChangeUpdated ChangeType = "updated"
 )
 
+// NodeFinding is a lightweight copy of a threat finding attached to a node.
+// Defined here to avoid an import cycle between graph and threat.
+type NodeFinding struct {
+	Code        string // e.g. "SG001"
+	Severity    string // "critical" | "high" | "medium" | "info"
+	Title       string // Short human-readable description
+	Detail      string // What was found and why it matters
+	Remediation string // Concrete fix suggestion
+}
+
 // Node represents a single resource in the diagram.
 type Node struct {
 	ID           string            // Unique ID — same as resource Address
@@ -45,8 +55,12 @@ type Node struct {
 	Module       string            // Terraform module path
 	ChangeType   ChangeType        // Set by diff package
 	// Threat fields — populated by threat.AnnotateGraph()
-	ThreatCodes       []string // e.g. ["SG003", "RDS001"]
-	ThreatMaxSeverity string   // "critical" | "high" | "medium" | "info"
+	ThreatCodes       []string       // e.g. ["SG003", "RDS001"]
+	ThreatMaxSeverity string         // "critical" | "high" | "medium" | "info"
+	ThreatFindings    []NodeFinding  // Full finding details for the detail panel
+	// Cost fields — populated by cost.AnnotateGraph()
+	MonthlyCost float64 // Estimated monthly cost in USD
+	HourlyCost  float64 // Estimated hourly cost in USD
 }
 
 // Edge represents a dependency between two nodes.

@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/hack-monk/tf-lens/internal/cost"
 	"github.com/hack-monk/tf-lens/internal/diff"
 	"github.com/hack-monk/tf-lens/internal/graph"
 	"github.com/hack-monk/tf-lens/internal/icons"
@@ -21,6 +22,7 @@ var (
 	serveDiff  string
 	serveNoOpen  bool
 	serveThreat  bool
+	serveCost    string
 )
 
 var serveCmd = &cobra.Command{
@@ -74,7 +76,19 @@ Examples:
 				counts["critical"], counts["high"], counts["medium"], counts["info"])
 		}
 
-		// ── 5. Start server ───────────────────────────────────────────────────
+		// ── 5. Cost overlay (optional) ──────────────────────────────────────
+		if serveCost != "" {
+			costs, err := resolveCosts(serveCost)
+			if err != nil {
+				return fmt.Errorf("cost overlay: %w", err)
+			}
+			cost.AnnotateGraph(g, costs)
+
+			total := cost.TotalMonthlyCost(costs)
+			fmt.Printf("💰  Cost: %s/mo across %d resources\n", cost.FormatCost(total), len(costs))
+		}
+
+		// ── 6. Start server ───────────────────────────────────────────────────
 		resolver := icons.NewResolver("") // icons not needed in serve mode
 		srv := server.New(servePort, g, resolver)
 
@@ -98,6 +112,8 @@ func init() {
 	serveCmd.Flags().StringVar(&serveDiff, "diff", "", "Base plan/state to diff against (enables diff mode)")
 	serveCmd.Flags().BoolVar(&serveNoOpen, "no-open", false, "Don't open the browser automatically")
 	serveCmd.Flags().BoolVar(&serveThreat, "threat", false, "Run threat modelling analysis and overlay findings")
+	serveCmd.Flags().StringVar(&serveCost, "cost", "",
+		"Cost overlay: path to Infracost JSON file, or Terraform directory to auto-run infracost")
 }
 
 // openBrowser opens the given URL in the default browser.

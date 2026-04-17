@@ -77,6 +77,23 @@ func abbrev(t string) string {
 	return strings.ToUpper(last)
 }
 
+func toFindingData(nf []graph.NodeFinding) []findingData {
+	if len(nf) == 0 {
+		return nil
+	}
+	out := make([]findingData, len(nf))
+	for i, f := range nf {
+		out[i] = findingData{
+			Code:        f.Code,
+			Severity:    f.Severity,
+			Title:       f.Title,
+			Detail:      f.Detail,
+			Remediation: f.Remediation,
+		}
+	}
+	return out
+}
+
 // ── Elements ─────────────────────────────────────────────────────────────────
 
 type nodeData struct {
@@ -88,8 +105,18 @@ type nodeData struct {
 	ChangeType      string   `json:"changeType,omitempty"`
 	Abbrev          string   `json:"abbrev"`
 	IsParent        bool     `json:"isParent"`
-	ThreatSeverity  string   `json:"threatSeverity,omitempty"`
-	ThreatCodes     []string `json:"threatCodes,omitempty"`
+	ThreatSeverity  string           `json:"threatSeverity,omitempty"`
+	ThreatCodes     []string         `json:"threatCodes,omitempty"`
+	ThreatFindings  []findingData    `json:"threatFindings,omitempty"`
+	MonthlyCost     float64          `json:"monthlyCost,omitempty"`
+}
+
+type findingData struct {
+	Code        string `json:"code"`
+	Severity    string `json:"severity"`
+	Title       string `json:"title"`
+	Detail      string `json:"detail"`
+	Remediation string `json:"remediation"`
 }
 
 type edgeData struct {
@@ -123,6 +150,8 @@ func buildElements(g *graph.Graph) []element {
 				IsParent:         parentIDs[n.ID],
 				ThreatSeverity:   n.ThreatMaxSeverity,
 				ThreatCodes:      n.ThreatCodes,
+				ThreatFindings:   toFindingData(n.ThreatFindings),
+				MonthlyCost:      n.MonthlyCost,
 			},
 		})
 	}
@@ -287,6 +316,14 @@ body{
 .nc__threat--high    {background:#C05621}
 .nc__threat--medium  {background:#975A16}
 .nc__threat--info    {background:#2B6CB0}
+.nc__cost{
+  position:absolute;top:4px;left:4px;
+  padding:1px 5px;border-radius:8px;
+  font-size:8px;font-weight:700;color:#276749;
+  background:#F0FFF4;border:1px solid #9AE6B4;
+  line-height:1.3;white-space:nowrap;
+  box-shadow:0 1px 2px rgba(0,0,0,.12);
+}
 
 /* ── Container label (HTML overlay, sits on top border) ── */
 .cl{
@@ -471,6 +508,13 @@ if(typeof cytoscape==='undefined'){
   return;
 }
 
+function fmtCost(n){
+  if(n<0.01) return '<$0.01';
+  if(n<1) return '$'+n.toFixed(2);
+  if(n<1000) return '$'+n.toFixed(2);
+  return '$'+n.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+}
+
 var CAT={
   networking:{label:'Networking',color:'#147EBA',badge:'bn'},
   compute:   {label:'Compute',   color:'#ED7100',badge:'bc'},
@@ -568,9 +612,13 @@ if(typeof cy.nodeHtmlLabel === 'function'){
         var ti = {critical:'!', high:'!', medium:'~', info:'i'}[d.threatSeverity] || '!';
         threatBadge = '<div class="nc__threat nc__threat--'+d.threatSeverity+'" title="'+d.threatSeverity+'">'+ti+'</div>';
       }
+      var costBadge = '';
+      if(d.monthlyCost && d.monthlyCost > 0){
+        costBadge = '<div class="nc__cost" title="$'+d.monthlyCost.toFixed(2)+'/mo">'+fmtCost(d.monthlyCost)+'</div>';
+      }
       return '<div class="nc nc--'+cat+chg+'" data-id="'+d.id+'">'
            + '<div class="nc__b"><span class="nc__t">'+(d.abbrev||'?')+'</span></div>'
-           + threatBadge
+           + threatBadge + costBadge
            + '</div>';
     }
   }]);
@@ -662,6 +710,18 @@ if(totalThreats > 0){
   document.getElementById('sb').appendChild(tp);
 }
 
+// ── Cost summary pill ────────────────────────────────────────────────────
+var totalCost = 0;
+ELEMENTS.forEach(function(el){
+  if(el.group==='nodes' && el.data.monthlyCost) totalCost += el.data.monthlyCost;
+});
+if(totalCost > 0){
+  var cp = document.createElement('div');
+  cp.className = 'sp';
+  cp.innerHTML = '💰&nbsp; <b>' + fmtCost(totalCost) + '</b>/mo';
+  document.getElementById('sb').appendChild(cp);
+}
+
 // ── Fit ──────────────────────────────────────────────────────────────────
 function fitG(){ cy.fit(undefined, 60); }
 window.fitG = fitG;
@@ -723,17 +783,35 @@ window.openPanel = function(d){
   h += '<div class="pa"><div class="pk">Address</div><div class="pv"><span class="pc">'+d.id+'</span></div></div>';
   h += '<div class="pa"><div class="pk">Type</div><div class="pv"><span class="pc">'+d.type+'</span></div></div>';
 
-  // ── Threat findings ──────────────────────────────────────────────────
-  if(d.threatSeverity && d.threatSeverity !== '' && d.threatCodes && d.threatCodes.length > 0){
-    var sevColor = {critical:'#C53030',high:'#C05621',medium:'#975A16',info:'#2B6CB0'}[d.threatSeverity]||'#718096';
-    var sevBg    = {critical:'#FFF5F5',high:'#FFFAF0',medium:'#FFFFF0',info:'#EBF8FF'}[d.threatSeverity]||'#F7FAFC';
+  // ── Cost ──────────────────────────────────────────────────────────────
+  if(d.monthlyCost && d.monthlyCost > 0){
     h += '<div class="pd"></div>';
-    h += '<div class="pa"><div class="pk" style="color:'+sevColor+'">⚠ Security findings ('+d.threatCodes.length+')</div>';
-    h += '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">';
-    d.threatCodes.forEach(function(code){
-      h += '<div style="background:'+sevBg+';border:1px solid '+sevColor+';border-radius:4px;'
-         + 'padding:5px 8px;font-size:11px;color:'+sevColor+';font-weight:600;font-family:ui-monospace,monospace">'
-         + code + '</div>';
+    h += '<div class="pa"><div class="pk" style="color:#276749">💰 Cost estimate</div>';
+    h += '<div class="pv" style="font-size:16px;font-weight:700;color:#276749;margin-top:4px">'
+       + fmtCost(d.monthlyCost) + '<span style="font-size:11px;font-weight:400;color:#718096">/mo</span></div></div>';
+  }
+
+  // ── Threat findings ──────────────────────────────────────────────────
+  if(d.threatFindings && d.threatFindings.length > 0){
+    var sevColors = {critical:'#C53030',high:'#C05621',medium:'#975A16',info:'#2B6CB0'};
+    var sevBgs    = {critical:'#FFF5F5',high:'#FFFAF0',medium:'#FFFFF0',info:'#EBF8FF'};
+    var sevLabels = {critical:'CRITICAL',high:'HIGH',medium:'MEDIUM',info:'INFO'};
+    h += '<div class="pd"></div>';
+    h += '<div class="pa"><div class="pk" style="color:'+(sevColors[d.threatSeverity]||'#718096')+'">⚠ Security findings ('+d.threatFindings.length+')</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">';
+    d.threatFindings.forEach(function(f){
+      var fc = sevColors[f.severity]||'#718096';
+      var fb = sevBgs[f.severity]||'#F7FAFC';
+      h += '<div style="background:'+fb+';border:1px solid '+fc+';border-radius:6px;padding:10px;font-size:11px">';
+      h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+      h += '<span style="background:'+fc+';color:#FFF;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:800;letter-spacing:.5px">'+(sevLabels[f.severity]||'')+'</span>';
+      h += '<span style="color:'+fc+';font-weight:700;font-family:ui-monospace,monospace;font-size:10px">'+f.code+'</span>';
+      h += '</div>';
+      h += '<div style="color:#1A202C;font-weight:600;margin-bottom:4px">'+f.title+'</div>';
+      h += '<div style="color:#4A5568;line-height:1.5;margin-bottom:6px">'+f.detail+'</div>';
+      h += '<div style="color:#276749;background:#F0FFF4;border:1px solid #C6F6D5;border-radius:4px;padding:6px 8px;line-height:1.5">';
+      h += '<span style="font-weight:700">Fix: </span>'+f.remediation+'</div>';
+      h += '</div>';
     });
     h += '</div></div>';
   }

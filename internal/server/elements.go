@@ -54,6 +54,8 @@ func buildElements(g *graph.Graph) []element {
 				IsParent:        parentIDs[n.ID],
 				ThreatSeverity:  n.ThreatMaxSeverity,
 				ThreatCodes:     n.ThreatCodes,
+				ThreatFindings:  toFindingData(n.ThreatFindings),
+				MonthlyCost:     n.MonthlyCost,
 			},
 		})
 	}
@@ -71,6 +73,23 @@ func buildElements(g *graph.Graph) []element {
 		}
 	}
 	return elems
+}
+
+func toFindingData(nf []graph.NodeFinding) []findingData {
+	if len(nf) == 0 {
+		return nil
+	}
+	out := make([]findingData, len(nf))
+	for i, f := range nf {
+		out[i] = findingData{
+			Code:        f.Code,
+			Severity:    f.Severity,
+			Title:       f.Title,
+			Detail:      f.Detail,
+			Remediation: f.Remediation,
+		}
+	}
+	return out
 }
 
 // Unused in serve mode — icons are resolved client-side via CSS classes.

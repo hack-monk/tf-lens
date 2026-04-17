@@ -1,0 +1,48 @@
+{
+  "version": "0.2",
+  "currency": "USD",
+  "projects": [
+    {
+      "name": "test-project",
+      "breakdown": {
+        "resources": [
+          {
+            "name": "aws_instance.web",
+            "resourceType": "aws_instance",
+            "monthlyCost": "73.584",
+            "hourlyCost": "0.1008",
+            "costComponents": [
+              {
+                "name": "Linux/UNIX usage (on-demand, t3.medium)",
+                "unit": "hours",
+                "monthlyCost": "30.368",
+                "hourlyCost": "0.0416"
+              }
+            ]
+          },
+          {
+            "name": "aws_db_instance.postgres",
+            "resourceType": "aws_db_instance",
+            "monthlyCost": "156.816",
+            "hourlyCost": "0.2148",
+            "costComponents": []
+          },
+          {
+            "name": "aws_s3_bucket.logs",
+            "resourceType": "aws_s3_bucket",
+            "monthlyCost": "0",
+            "hourlyCost": "0",
+            "costComponents": []
+          },
+          {
+            "name": "aws_lambda_function.processor",
+            "resourceType": "aws_lambda_function",
+            "monthlyCost": "4.20",
+            "hourlyCost": "0.00575",
+            "costComponents": []
+          }
+        ]
+      }
+    }
+  ]
+}

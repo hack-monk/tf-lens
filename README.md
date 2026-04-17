@@ -22,6 +22,7 @@ TF-Lens parses Terraform plan and state files and renders them as clean, interac
 | Pluralith requires a cloud account and SaaS setup | Fully offline, single binary, no account |
 | No free diff view for PR reviews | Built-in green/red/amber diff mode |
 | No free security overlay for Terraform | Threat modelling: SG exposure, unencrypted storage, public RDS, IAM wildcards |
+| Cost visibility requires separate tooling | Infracost-powered cost overlay — per-resource and total monthly estimates |
 
 ---
 
@@ -34,6 +35,8 @@ TF-Lens parses Terraform plan and state files and renders them as clean, interac
 **Diff mode** — compare two plans or plan vs state, node cards show what changed at a glance
 
 **Threat modelling** — detects 20+ security misconfigurations across SGs, S3, RDS, IAM, Lambda, EKS, ElastiCache, SQS, SNS, CloudFront
+
+**Cost overlay** — Infracost integration shows per-resource monthly cost on node cards and total estimate in the statusbar
 
 **AWS-style diagram** — category-coloured cards, dashed VPC/subnet containers with labels on the border line, right-angle edge routing
 
@@ -95,6 +98,7 @@ tf-lens export [flags]
   --out         Output HTML file path (default: diagram.html)
   --diff        Base plan/state to diff against — enables diff mode
   --threat      Run threat modelling and overlay findings on diagram
+  --cost        Cost overlay: Infracost JSON file, or Terraform dir to auto-run infracost
   --icon-dir    Directory with custom SVG icons (optional)
 ```
 
@@ -108,6 +112,7 @@ tf-lens serve [flags]
   --port        HTTP port (default: 7777)
   --diff        Base plan/state to diff against
   --threat      Run threat modelling overlay
+  --cost        Cost overlay: Infracost JSON file, or Terraform dir to auto-run infracost
   --no-open     Don't open browser automatically
 ```
 
@@ -154,7 +159,13 @@ The CLI prints a severity-sorted summary:
     🔵 Info:     3
 ```
 
-Affected node cards show a severity badge. Click any node to see finding codes in the detail panel.
+Affected node cards show a severity badge. Click any node to open the detail panel with full findings:
+
+- **Severity badge** — colour-coded label (CRITICAL / HIGH / MEDIUM / INFO)
+- **Finding code** — e.g. `SG002`, `RDS001`
+- **Title** — short description of what was detected
+- **Detail** — explains exactly what was found and why it matters
+- **Fix** — concrete remediation steps in a highlighted box
 
 **Detection rules across 10 resource types:**
 
@@ -170,6 +181,38 @@ Affected node cards show a severity badge. Click any node to see finding codes i
 | `aws_sqs_queue` | No encryption |
 | `aws_sns_topic` | No KMS encryption |
 | `aws_cloudfront_distribution` | Outdated TLS version, no WAF |
+
+---
+
+## Cost Overlay
+
+Visualise per-resource cloud costs directly on your architecture diagram, powered by [Infracost](https://www.infracost.io/).
+
+### Option A: Auto-run Infracost against your Terraform directory
+
+```bash
+# Requires: infracost CLI installed + API key configured
+tf-lens export --plan plan.json --cost /path/to/terraform/dir --out costs.html
+```
+
+### Option B: Use a pre-generated Infracost JSON file
+
+```bash
+infracost breakdown --path . --format json > cost.json
+tf-lens export --plan plan.json --cost cost.json --out costs.html
+```
+
+The CLI prints a summary:
+```
+💰  Cost estimate:
+    Monthly total: $234.60/mo
+    Resources with cost: 3
+```
+
+In the diagram:
+- Each node with cost shows a **green badge** (top-left corner) with the monthly amount
+- A **cost summary pill** in the bottom statusbar shows the total monthly estimate
+- Click any node to see its cost in the **detail panel**
 
 ---
 
@@ -199,6 +242,7 @@ tf-lens/
 │   ├── graph/         # Node/edge model, VPC→Subnet nesting logic
 │   ├── diff/          # Plan comparison, change classification
 │   ├── threat/        # Security misconfiguration detection (20+ rules)
+│   ├── cost/          # Infracost integration — parse JSON or auto-run CLI
 │   ├── icons/         # SVG resolver (user dir → embed → prefix → fallback)
 │   ├── renderer/      # Self-contained HTML export with Cytoscape.js
 │   └── server/        # HTTP server for serve mode
@@ -224,9 +268,10 @@ Two-mode design:
 - [x] Search / filter
 - [x] Click-to-inspect detail panel
 - [x] Keyboard shortcuts (F, R, Esc, +/-)
+- [x] Cost overlay (Infracost integration — file or auto-run)
+- [x] Detailed threat findings panel (title, detail, remediation per finding)
 
 **Up next**
-- [ ] Cost overlay (Infracost-compatible pricing data)
 - [ ] Azure support (community contribution path)
 - [ ] GitHub Actions / GitLab CI PR attachment templates
 - [ ] `--watch` flag for automatic plan reload
@@ -237,7 +282,7 @@ Two-mode design:
 
 - TF-Lens is fully offline, no account required. Pluralith requires cloud account registration.
 - Single 5.5MB binary with `make build`. No complex setup.
-- Threat modelling overlay is not available as a free feature in any competing tool.
+- Threat modelling and cost overlays are not available as free features in any competing tool.
 - Apache 2.0 — extend it, self-host it, contribute to it.
 
 ---
