@@ -31,6 +31,13 @@ const (
 	ChangeUpdated ChangeType = "updated"
 )
 
+// NodeDriftChange describes a single attribute that drifted from Terraform state.
+type NodeDriftChange struct {
+	Path     string // Attribute path, e.g. "tags.Name"
+	Expected string // Value in Terraform state
+	Actual   string // Value observed in cloud
+}
+
 // NodeFinding is a lightweight copy of a threat finding attached to a node.
 // Defined here to avoid an import cycle between graph and threat.
 type NodeFinding struct {
@@ -61,6 +68,9 @@ type Node struct {
 	// Cost fields — populated by cost.AnnotateGraph()
 	MonthlyCost float64 // Estimated monthly cost in USD
 	HourlyCost  float64 // Estimated hourly cost in USD
+	// Drift fields — populated by drift.AnnotateGraph()
+	DriftStatus  string            // "update", "delete", "create", or "" (no drift)
+	DriftChanges []NodeDriftChange // Per-attribute changes
 }
 
 // Edge represents a dependency between two nodes.

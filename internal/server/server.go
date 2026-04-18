@@ -121,8 +121,16 @@ type nodeData struct {
 	IsParent       bool     `json:"isParent"`
 	ThreatSeverity string        `json:"threatSeverity,omitempty"`
 	ThreatCodes    []string      `json:"threatCodes,omitempty"`
-	ThreatFindings []findingData `json:"threatFindings,omitempty"`
-	MonthlyCost    float64       `json:"monthlyCost,omitempty"`
+	ThreatFindings []findingData     `json:"threatFindings,omitempty"`
+	MonthlyCost    float64           `json:"monthlyCost,omitempty"`
+	DriftStatus    string            `json:"driftStatus,omitempty"`
+	DriftChanges   []driftChangeData `json:"driftChanges,omitempty"`
+}
+
+type driftChangeData struct {
+	Path     string `json:"path"`
+	Expected string `json:"expected"`
+	Actual   string `json:"actual"`
 }
 
 type findingData struct {

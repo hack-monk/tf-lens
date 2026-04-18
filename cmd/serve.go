@@ -8,6 +8,7 @@ import (
 
 	"github.com/hack-monk/tf-lens/internal/cost"
 	"github.com/hack-monk/tf-lens/internal/diff"
+	"github.com/hack-monk/tf-lens/internal/drift"
 	"github.com/hack-monk/tf-lens/internal/graph"
 	"github.com/hack-monk/tf-lens/internal/icons"
 	"github.com/hack-monk/tf-lens/internal/server"
@@ -23,6 +24,7 @@ var (
 	serveNoOpen  bool
 	serveThreat  bool
 	serveCost    string
+	serveDriftPath string
 )
 
 var serveCmd = &cobra.Command{
@@ -88,7 +90,17 @@ Examples:
 			fmt.Printf("💰  Cost: %s/mo across %d resources\n", cost.FormatCost(total), len(costs))
 		}
 
-		// ── 6. Start server ───────────────────────────────────────────────────
+		// ── 6. Drift detection (optional) ──────────────────────────────────
+		if serveDriftPath != "" {
+			drifted, err := resolveDrift(serveDriftPath)
+			if err != nil {
+				return fmt.Errorf("drift detection: %w", err)
+			}
+			drift.AnnotateGraph(g, drifted)
+			fmt.Printf("🔀  Drift: %d resources drifted from state\n", len(drifted))
+		}
+
+		// ── 7. Start server ───────────────────────────────────────────────────
 		resolver := icons.NewResolver("") // icons not needed in serve mode
 		srv := server.New(servePort, g, resolver)
 
@@ -114,6 +126,8 @@ func init() {
 	serveCmd.Flags().BoolVar(&serveThreat, "threat", false, "Run threat modelling analysis and overlay findings")
 	serveCmd.Flags().StringVar(&serveCost, "cost", "",
 		"Cost overlay: path to Infracost JSON file, or Terraform directory to auto-run infracost")
+	serveCmd.Flags().StringVar(&serveDriftPath, "drift", "",
+		"Drift detection: refresh-only plan JSON, or Terraform dir to auto-run terraform plan -refresh-only")
 }
 
 // openBrowser opens the given URL in the default browser.

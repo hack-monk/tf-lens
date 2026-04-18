@@ -6,6 +6,7 @@ import (
 
 	"github.com/hack-monk/tf-lens/internal/cost"
 	"github.com/hack-monk/tf-lens/internal/diff"
+	"github.com/hack-monk/tf-lens/internal/drift"
 	"github.com/hack-monk/tf-lens/internal/graph"
 	"github.com/hack-monk/tf-lens/internal/icons"
 	"github.com/hack-monk/tf-lens/internal/parser"
@@ -22,6 +23,7 @@ var (
 	exportDiff    string
 	exportThreat  bool
 	exportCost    string
+	exportDrift   string
 )
 
 var exportCmd = &cobra.Command{
@@ -111,10 +113,28 @@ Examples:
 			fmt.Println()
 		}
 
-		// ── 6. Resolve icons ──────────────────────────────────────────────────
+		// ── 6. Drift detection (optional) ──────────────────────────────────
+		if exportDrift != "" {
+			drifted, err := resolveDrift(exportDrift)
+			if err != nil {
+				return fmt.Errorf("drift detection: %w", err)
+			}
+			drift.AnnotateGraph(g, drifted)
+
+			summary := drift.Summary(drifted)
+			fmt.Println()
+			fmt.Println("🔀  State drift detected:")
+			fmt.Printf("    Drifted resources: %d\n", len(drifted))
+			if summary["update"] > 0 { fmt.Printf("    Modified: %d\n", summary["update"]) }
+			if summary["delete"] > 0 { fmt.Printf("    Deleted:  %d\n", summary["delete"]) }
+			if summary["create"] > 0 { fmt.Printf("    Created:  %d\n", summary["create"]) }
+			fmt.Println()
+		}
+
+		// ── 7. Resolve icons ──────────────────────────────────────────────────
 		resolver := icons.NewResolver(exportIconDir)
 
-		// ── 7. Write HTML ─────────────────────────────────────────────────────
+		// ── 8. Write HTML ─────────────────────────────────────────────────────
 		outPath := exportOut
 		if outPath == "" {
 			outPath = "diagram.html"
@@ -146,6 +166,8 @@ func init() {
 		"Run threat modelling analysis and overlay findings on the diagram")
 	exportCmd.Flags().StringVar(&exportCost, "cost", "",
 		"Cost overlay: path to Infracost JSON file, or Terraform directory to auto-run infracost")
+	exportCmd.Flags().StringVar(&exportDrift, "drift", "",
+		"Drift detection: refresh-only plan JSON file, or Terraform directory to auto-run terraform plan -refresh-only")
 }
 
 // resolveCosts handles the --cost flag: if the path is a JSON file, parse it
@@ -164,6 +186,22 @@ func resolveCosts(path string) ([]cost.ResourceCost, error) {
 
 	// File → try parsing as Infracost JSON
 	return cost.ParseFile(path)
+}
+
+// resolveDrift handles the --drift flag: if the path is a JSON file, parse it;
+// if it's a directory, run terraform plan -refresh-only against it.
+func resolveDrift(path string) ([]drift.DriftedResource, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot access %q: %w", path, err)
+	}
+
+	if info.IsDir() {
+		fmt.Printf("🔄  Running terraform plan -refresh-only on %s …\n", path)
+		return drift.RunRefreshOnly(path)
+	}
+
+	return drift.ParseFile(path)
 }
 
 // parseInput selects plan vs state based on which flag was provided.

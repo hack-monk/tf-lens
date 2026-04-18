@@ -23,6 +23,7 @@ TF-Lens parses Terraform plan and state files and renders them as clean, interac
 | No free diff view for PR reviews | Built-in green/red/amber diff mode |
 | No free security overlay for Terraform | Threat modelling: SG exposure, unencrypted storage, public RDS, IAM wildcards |
 | Cost visibility requires separate tooling | Infracost-powered cost overlay — per-resource and total monthly estimates |
+| Manual cloud changes go unnoticed | State drift detection — compare live AWS state against Terraform |
 
 ---
 
@@ -37,6 +38,8 @@ TF-Lens parses Terraform plan and state files and renders them as clean, interac
 **Threat modelling** — detects 20+ security misconfigurations across SGs, S3, RDS, IAM, Lambda, EKS, ElastiCache, SQS, SNS, CloudFront
 
 **Cost overlay** — Infracost integration shows per-resource monthly cost on node cards and total estimate in the statusbar
+
+**State drift detection** — detects manual AWS changes by comparing live cloud state against Terraform, highlights drifted resources with attribute-level diffs
 
 **AWS-style diagram** — category-coloured cards, dashed VPC/subnet containers with labels on the border line, right-angle edge routing
 
@@ -99,6 +102,7 @@ tf-lens export [flags]
   --diff        Base plan/state to diff against — enables diff mode
   --threat      Run threat modelling and overlay findings on diagram
   --cost        Cost overlay: Infracost JSON file, or Terraform dir to auto-run infracost
+  --drift       Drift detection: refresh-only plan JSON, or Terraform dir to auto-run
   --icon-dir    Directory with custom SVG icons (optional)
 ```
 
@@ -113,6 +117,7 @@ tf-lens serve [flags]
   --diff        Base plan/state to diff against
   --threat      Run threat modelling overlay
   --cost        Cost overlay: Infracost JSON file, or Terraform dir to auto-run infracost
+  --drift       Drift detection: refresh-only plan JSON, or Terraform dir to auto-run
   --no-open     Don't open browser automatically
 ```
 
@@ -216,6 +221,39 @@ In the diagram:
 
 ---
 
+## State Drift Detection
+
+Detect when someone manually changes AWS resources outside of Terraform:
+
+### Option A: Auto-run Terraform refresh against your directory
+
+```bash
+# Requires: terraform CLI + AWS credentials configured
+tf-lens export --plan plan.json --drift /path/to/terraform/dir --out drift.html
+```
+
+### Option B: Use a pre-generated refresh-only plan
+
+```bash
+terraform plan -refresh-only -out=refresh.bin
+terraform show -json refresh.bin > drift.json
+tf-lens export --plan plan.json --drift drift.json --out drift.html
+```
+
+The CLI prints a summary:
+```
+🔀  State drift detected:
+    Drifted resources: 2
+    Modified: 2
+```
+
+In the diagram:
+- Drifted nodes get a **purple outline** and **lightning bolt badge**
+- Click any drifted node to see an **attribute-level diff table** (attribute / expected / actual)
+- A **drift summary pill** in the bottom statusbar shows total drifted resource count
+
+---
+
 ## Icon System
 
 TF-Lens ships with 25+ custom SVGs, colour-coded by AWS service category:
@@ -243,6 +281,7 @@ tf-lens/
 │   ├── diff/          # Plan comparison, change classification
 │   ├── threat/        # Security misconfiguration detection (20+ rules)
 │   ├── cost/          # Infracost integration — parse JSON or auto-run CLI
+│   ├── drift/         # State drift detection — refresh-only plan comparison
 │   ├── icons/         # SVG resolver (user dir → embed → prefix → fallback)
 │   ├── renderer/      # Self-contained HTML export with Cytoscape.js
 │   └── server/        # HTTP server for serve mode
@@ -267,9 +306,14 @@ Two-mode design:
 - [x] 25+ AWS service icons
 - [x] Search / filter
 - [x] Click-to-inspect detail panel
-- [x] Keyboard shortcuts (F, R, Esc, +/-)
+- [x] Keyboard shortcuts (F, R, Esc, +/-, /, ?)
 - [x] Cost overlay (Infracost integration — file or auto-run)
 - [x] Detailed threat findings panel (title, detail, remediation per finding)
+- [x] State drift detection (manual AWS change detection with attribute-level diffs)
+- [x] Resizable detail panel (drag to adjust width)
+- [x] Keyboard shortcut help overlay (press ?)
+- [x] Search UX (clear button, result count, / to focus)
+- [x] Glassmorphism statusbar + zoom indicator
 
 **Up next**
 - [ ] Azure support (community contribution path)

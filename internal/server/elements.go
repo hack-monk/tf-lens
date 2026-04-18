@@ -56,6 +56,8 @@ func buildElements(g *graph.Graph) []element {
 				ThreatCodes:     n.ThreatCodes,
 				ThreatFindings:  toFindingData(n.ThreatFindings),
 				MonthlyCost:     n.MonthlyCost,
+				DriftStatus:     n.DriftStatus,
+				DriftChanges:    toDriftChangeData(n.DriftChanges),
 			},
 		})
 	}
@@ -73,6 +75,17 @@ func buildElements(g *graph.Graph) []element {
 		}
 	}
 	return elems
+}
+
+func toDriftChangeData(dc []graph.NodeDriftChange) []driftChangeData {
+	if len(dc) == 0 {
+		return nil
+	}
+	out := make([]driftChangeData, len(dc))
+	for i, c := range dc {
+		out[i] = driftChangeData{Path: c.Path, Expected: c.Expected, Actual: c.Actual}
+	}
+	return out
 }
 
 func toFindingData(nf []graph.NodeFinding) []findingData {

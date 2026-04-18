@@ -94,6 +94,17 @@ func toFindingData(nf []graph.NodeFinding) []findingData {
 	return out
 }
 
+func toDriftChangeData(dc []graph.NodeDriftChange) []driftChangeData {
+	if len(dc) == 0 {
+		return nil
+	}
+	out := make([]driftChangeData, len(dc))
+	for i, c := range dc {
+		out[i] = driftChangeData{Path: c.Path, Expected: c.Expected, Actual: c.Actual}
+	}
+	return out
+}
+
 // ── Elements ─────────────────────────────────────────────────────────────────
 
 type nodeData struct {
@@ -109,6 +120,14 @@ type nodeData struct {
 	ThreatCodes     []string         `json:"threatCodes,omitempty"`
 	ThreatFindings  []findingData    `json:"threatFindings,omitempty"`
 	MonthlyCost     float64          `json:"monthlyCost,omitempty"`
+	DriftStatus     string           `json:"driftStatus,omitempty"`
+	DriftChanges    []driftChangeData `json:"driftChanges,omitempty"`
+}
+
+type driftChangeData struct {
+	Path     string `json:"path"`
+	Expected string `json:"expected"`
+	Actual   string `json:"actual"`
 }
 
 type findingData struct {
@@ -152,6 +171,8 @@ func buildElements(g *graph.Graph) []element {
 				ThreatCodes:      n.ThreatCodes,
 				ThreatFindings:   toFindingData(n.ThreatFindings),
 				MonthlyCost:      n.MonthlyCost,
+				DriftStatus:      n.DriftStatus,
+				DriftChanges:     toDriftChangeData(n.DriftChanges),
 			},
 		})
 	}
@@ -190,6 +211,13 @@ const htmlSrc = `<!DOCTYPE html>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
+/* ── Thin custom scrollbar ── */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#CBD5E0;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#A0AEC0}
+*{scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent}
+
 body{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
   background:#F0F2F5;
@@ -219,6 +247,18 @@ body{
 }
 #q:focus{border-color:#FF9900;background:#1A202C}
 #q::placeholder{color:#4A5568}
+#qx{
+  position:absolute;right:28px;top:50%;transform:translateY(-50%);
+  color:#4A5568;font-size:16px;cursor:pointer;display:none;
+  width:18px;height:18px;text-align:center;line-height:18px;
+  border-radius:50%;transition:color .12s,background .12s;
+}
+#qx:hover{color:#F7FAFC;background:rgba(255,255,255,.12)}
+#qc{
+  position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  font-size:9px;color:#718096;display:none;pointer-events:none;
+  font-weight:600;
+}
 .bg{display:flex;gap:1px}
 .btn{
   height:30px;padding:0 11px;border-radius:5px;
@@ -298,12 +338,21 @@ body{
 .nc--unknown    .nc__t{color:#718096}
 
 .nc:hover{
-  box-shadow:0 4px 14px rgba(0,0,0,.11),0 2px 4px rgba(0,0,0,.07);
-  transform:translateY(-1px);
+  box-shadow:0 6px 20px rgba(0,0,0,.13),0 2px 6px rgba(0,0,0,.08);
+  transform:translateY(-2px) scale(1.03);
 }
 .nc--added  {outline:2.5px solid #38A169;outline-offset:2px}
 .nc--removed{outline:2.5px dashed #E53E3E;outline-offset:2px;opacity:.6}
 .nc--updated{outline:2.5px solid #D69E2E;outline-offset:2px}
+.nc--drifted{outline:2.5px solid #9F7AEA;outline-offset:2px}
+.nc__drift{
+  position:absolute;top:4px;right:4px;
+  width:15px;height:15px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:900;color:#FFF;
+  background:#9F7AEA;
+  box-shadow:0 1px 3px rgba(0,0,0,.35);line-height:1;
+}
 .nc--sel    {outline:3px solid #0073BB;outline-offset:2px;box-shadow:0 0 0 5px rgba(0,115,187,.13)}
 .nc__threat{
   position:absolute;bottom:4px;right:4px;
@@ -352,10 +401,13 @@ body{
   display:flex;gap:8px;z-index:10;pointer-events:none;
 }
 .sp{
-  background:rgba(255,255,255,.93);border:1px solid #E2E8F0;
+  background:rgba(255,255,255,.72);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid rgba(226,232,240,.6);
   border-radius:20px;padding:5px 12px;
   font-size:11px;color:#4A5568;white-space:nowrap;
-  box-shadow:0 1px 4px rgba(0,0,0,.08);
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+  transition:background .2s,box-shadow .2s;
 }
 .sp b{color:#1A202C;font-weight:700}
 
@@ -378,13 +430,20 @@ body{
 
 /* ── Detail panel ── */
 #panel{
-  position:absolute;right:0;top:55px;bottom:0;width:280px;
+  position:absolute;right:0;top:55px;bottom:0;width:320px;min-width:220px;max-width:60vw;
   background:#FFF;border-left:1px solid #E2E8F0;
   box-shadow:-4px 0 20px rgba(0,0,0,.06);
   display:flex;flex-direction:column;
   transform:translateX(100%);
   transition:transform .22s cubic-bezier(.4,0,.2,1);
   z-index:30;
+}
+#panel-resize{
+  position:absolute;left:-4px;top:0;bottom:0;width:8px;
+  cursor:col-resize;z-index:31;
+}
+#panel-resize:hover,#panel-resize.active{
+  background:linear-gradient(90deg,transparent 2px,#FF9900 2px,#FF9900 4px,transparent 4px);
 }
 #panel.open{transform:translateX(0)}
 #ph{
@@ -405,7 +464,7 @@ body{
   padding:0;flex-shrink:0;transition:color .12s;
 }
 #phx:hover{color:#F7FAFC}
-#pb{flex:1;overflow-y:auto;padding:14px 16px}
+#pb{flex:1;overflow-y:auto;padding:14px 16px;scroll-behavior:smooth}
 .pa{margin-bottom:14px}
 .pk{font-size:10px;color:#A0AEC0;text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:4px}
 .pv{font-size:12px;color:#2D3748;line-height:1.5;word-break:break-all}
@@ -422,6 +481,38 @@ body{
 .ca{background:#F0FFF4;color:#276749;border:1px solid #9AE6B4}
 .cr{background:#FFF5F5;color:#C53030;border:1px solid #FEB2B2}
 .cu{background:#FFFFF0;color:#975A16;border:1px solid #F6E05E}
+.attr-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
+.attr-table tr{border-bottom:1px solid #EDF2F7}
+.attr-table tr:last-child{border-bottom:none}
+.attr-table td{padding:4px 0;vertical-align:top}
+.attr-table td:first-child{color:#718096;width:35%;padding-right:8px;word-break:break-word}
+
+/* ── Button active state ── */
+.btn:active{transform:scale(.95)}
+
+/* ── Keyboard help overlay ── */
+#khelp{
+  display:none;position:fixed;inset:0;z-index:200;
+  background:rgba(0,0,0,.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  align-items:center;justify-content:center;
+}
+#khelp.show{display:flex}
+#khelp-box{
+  background:#FFF;border-radius:12px;padding:28px 32px;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);max-width:380px;width:90%;
+  animation:kfadeIn .18s ease-out;
+}
+@keyframes kfadeIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+#khelp-box h3{font-size:14px;color:#1A202C;margin-bottom:16px;font-weight:700}
+.krow{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #EDF2F7}
+.krow:last-child{border-bottom:none}
+.kkey{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:28px;height:24px;padding:0 8px;
+  background:#EDF2F7;border:1px solid #E2E8F0;border-radius:5px;
+  font-size:11px;font-weight:700;font-family:ui-monospace,monospace;color:#2D3748;
+}
+.kdesc{font-size:12px;color:#4A5568}
 </style>
 </head>
 <body>
@@ -434,6 +525,8 @@ body{
   <div class="sw">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <input id="q" type="text" placeholder="Search resources…" oninput="doSearch(this.value)" autocomplete="off">
+    <span id="qx" onclick="clearSearch()" title="Clear">×</span>
+    <span id="qc"></span>
   </div>
   <div class="bg">
     <button class="btn btn-p" onclick="fitG()" title="F">
@@ -460,6 +553,7 @@ body{
       <div class="li"><div class="ld" style="background:#38A169"></div>Added</div>
       <div class="li"><div class="ld" style="background:#E53E3E;opacity:.7"></div>Removed</div>
       <div class="li"><div class="ld" style="background:#D69E2E"></div>Changed</div>
+      <div class="li"><div class="ld" style="background:#9F7AEA"></div>Drifted</div>
     </div>
   </div>
 </div>
@@ -468,7 +562,8 @@ body{
 
 <div id="sb">
   <div class="sp" id="sc"></div>
-  <div class="sp" id="sh" style="display:none">Press <b>Esc</b> to clear &nbsp;·&nbsp; <b>F</b> to fit</div>
+  <div class="sp" id="sz" style="display:none"></div>
+  <div class="sp" id="sh" style="display:none">Press <b>Esc</b> to clear &nbsp;·&nbsp; <b>F</b> to fit &nbsp;·&nbsp; <b>?</b> help</div>
 </div>
 
 <div id="diffbar">
@@ -481,6 +576,7 @@ body{
 </div>
 
 <div id="panel">
+  <div id="panel-resize"></div>
   <div id="ph">
     <div id="phi">?</div>
     <div style="flex:1;min-width:0">
@@ -490,6 +586,18 @@ body{
     <button id="phx" onclick="closePanel()" title="Esc">×</button>
   </div>
   <div id="pb"></div>
+</div>
+
+<div id="khelp" onclick="if(event.target===this)toggleHelp()">
+  <div id="khelp-box">
+    <h3>Keyboard Shortcuts</h3>
+    <div class="krow"><span class="kdesc">Fit diagram to screen</span><span class="kkey">F</span></div>
+    <div class="krow"><span class="kdesc">Zoom in</span><span class="kkey">+</span></div>
+    <div class="krow"><span class="kdesc">Zoom out</span><span class="kkey">-</span></div>
+    <div class="krow"><span class="kdesc">Clear selection & search</span><span class="kkey">Esc</span></div>
+    <div class="krow"><span class="kdesc">Focus search box</span><span class="kkey">/</span></div>
+    <div class="krow"><span class="kdesc">Show this help</span><span class="kkey">?</span></div>
+  </div>
 </div>
 
 {{if .Offline}}
@@ -616,9 +724,14 @@ if(typeof cy.nodeHtmlLabel === 'function'){
       if(d.monthlyCost && d.monthlyCost > 0){
         costBadge = '<div class="nc__cost" title="$'+d.monthlyCost.toFixed(2)+'/mo">'+fmtCost(d.monthlyCost)+'</div>';
       }
-      return '<div class="nc nc--'+cat+chg+'" data-id="'+d.id+'">'
+      var driftClass = d.driftStatus ? ' nc--drifted' : '';
+      var driftBadge = '';
+      if(d.driftStatus){
+        driftBadge = '<div class="nc__drift" title="State drift detected">⚡</div>';
+      }
+      return '<div class="nc nc--'+cat+chg+driftClass+'" data-id="'+d.id+'">'
            + '<div class="nc__b"><span class="nc__t">'+(d.abbrev||'?')+'</span></div>'
-           + threatBadge + costBadge
+           + (d.driftStatus ? driftBadge : threatBadge) + costBadge
            + '</div>';
     }
   }]);
@@ -722,6 +835,30 @@ if(totalCost > 0){
   document.getElementById('sb').appendChild(cp);
 }
 
+// ── Drift summary pill ───────────────────────────────────────────────────
+var driftCount = 0;
+ELEMENTS.forEach(function(el){
+  if(el.group==='nodes' && el.data.driftStatus) driftCount++;
+});
+if(driftCount > 0){
+  var dp = document.createElement('div');
+  dp.className = 'sp';
+  dp.innerHTML = '🔀&nbsp; <b style="color:#9F7AEA">'+driftCount+'</b> drifted';
+  document.getElementById('sb').appendChild(dp);
+}
+
+// ── Zoom indicator ──────────────────────────────────────────────────────
+var szEl = document.getElementById('sz');
+var zoomTimer;
+function showZoom(){
+  var pct = Math.round(cy.zoom()*100);
+  szEl.innerHTML = '🔍&nbsp; <b>'+pct+'%</b>';
+  szEl.style.display = '';
+  clearTimeout(zoomTimer);
+  zoomTimer = setTimeout(function(){ szEl.style.display = 'none'; }, 2000);
+}
+cy.on('zoom', showZoom);
+
 // ── Fit ──────────────────────────────────────────────────────────────────
 function fitG(){ cy.fit(undefined, 60); }
 window.fitG = fitG;
@@ -783,6 +920,23 @@ window.openPanel = function(d){
   h += '<div class="pa"><div class="pk">Address</div><div class="pv"><span class="pc">'+d.id+'</span></div></div>';
   h += '<div class="pa"><div class="pk">Type</div><div class="pv"><span class="pc">'+d.type+'</span></div></div>';
 
+  // ── Drift ─────────────────────────────────────────────────────────────
+  if(d.driftStatus && d.driftChanges && d.driftChanges.length > 0){
+    h += '<div class="pd"></div>';
+    h += '<div class="pa"><div class="pk" style="color:#9F7AEA">🔀 State drift ('+d.driftChanges.length+' attributes changed)</div>';
+    h += '<div style="margin-top:6px">';
+    h += '<table class="attr-table" style="font-size:10px">';
+    h += '<tr style="border-bottom:2px solid #E9D8FD"><td style="color:#9F7AEA;font-weight:700">Attribute</td><td style="color:#9F7AEA;font-weight:700">Expected</td><td style="color:#9F7AEA;font-weight:700">Actual</td></tr>';
+    d.driftChanges.forEach(function(c){
+      h += '<tr>';
+      h += '<td style="color:#4A5568;font-weight:600">'+c.path+'</td>';
+      h += '<td style="color:#276749;background:#F0FFF4;padding:2px 4px;border-radius:3px;font-family:ui-monospace,monospace;font-size:9px">'+c.expected+'</td>';
+      h += '<td style="color:#C53030;background:#FFF5F5;padding:2px 4px;border-radius:3px;font-family:ui-monospace,monospace;font-size:9px">'+c.actual+'</td>';
+      h += '</tr>';
+    });
+    h += '</table></div></div>';
+  }
+
   // ── Cost ──────────────────────────────────────────────────────────────
   if(d.monthlyCost && d.monthlyCost > 0){
     h += '<div class="pd"></div>';
@@ -828,33 +982,87 @@ window.closePanel = function(){
 window.doSearch = function(q){
   clearSel();
   var t = q.toLowerCase().trim();
-  if(!t){ cy.elements().removeClass('faded'); return; }
+  var qx = document.getElementById('qx');
+  var qc = document.getElementById('qc');
+  qx.style.display = t ? '' : 'none';
+  if(!t){ cy.elements().removeClass('faded'); qc.style.display='none'; return; }
+  var matched = 0;
+  var leafCount = 0;
   cy.nodes().forEach(function(n){
+    if(n.isParent()) return;
+    leafCount++;
     var m = (n.data('label')||'').toLowerCase().includes(t)
          || (n.data('type') ||'').toLowerCase().includes(t)
          || (n.data('abbrev')||'').toLowerCase().includes(t)
          || n.id().toLowerCase().includes(t);
-    if(m) n.removeClass('faded'); else n.addClass('faded');
+    if(m){ n.removeClass('faded'); matched++; } else n.addClass('faded');
   });
   cy.edges().forEach(function(e){
     var ok = !e.source().hasClass('faded') && !e.target().hasClass('faded');
     if(ok) e.removeClass('faded'); else e.addClass('faded');
   });
+  qc.textContent = matched+'/'+leafCount;
+  qc.style.display = '';
+};
+
+window.clearSearch = function(){
+  document.getElementById('q').value = '';
+  document.getElementById('qx').style.display = 'none';
+  document.getElementById('qc').style.display = 'none';
+  cy.elements().removeClass('faded');
+};
+
+// ── Help overlay ─────────────────────────────────────────────────────────
+window.toggleHelp = function(){
+  document.getElementById('khelp').classList.toggle('show');
 };
 
 // ── Keyboard ─────────────────────────────────────────────────────────────
 document.addEventListener('keydown',function(e){
-  if(e.target.matches('input')) return;
+  // Close help overlay on Escape
+  var helpOpen = document.getElementById('khelp').classList.contains('show');
+  if(helpOpen && (e.key==='Escape'||e.key==='Esc')){ toggleHelp(); return; }
+
+  if(e.target.matches('input')){
+    if(e.key==='Escape'||e.key==='Esc'){ e.target.blur(); clearSearch(); clearSel(); closePanel(); document.getElementById('sh').style.display='none'; }
+    return;
+  }
   if(e.key==='Escape'||e.key==='Esc'){
-    clearSel(); closePanel();
-    document.getElementById('q').value='';
-    cy.elements().removeClass('faded');
+    clearSel(); closePanel(); clearSearch();
     document.getElementById('sh').style.display='none';
   }
   if(e.key==='f'||e.key==='F') fitG();
   if(e.key==='+'||e.key==='=') cy.zoom(cy.zoom()*1.3);
   if(e.key==='-') cy.zoom(cy.zoom()*.77);
+  if(e.key==='/'){e.preventDefault(); document.getElementById('q').focus();}
+  if(e.key==='?') toggleHelp();
 });
+
+// ── Panel resize ─────────────────────────────────────────────────────────
+(function(){
+  var handle = document.getElementById('panel-resize');
+  var panel  = document.getElementById('panel');
+  var dragging = false;
+  handle.addEventListener('mousedown', function(e){
+    e.preventDefault();
+    dragging = true;
+    handle.classList.add('active');
+    panel.style.transition = 'none';
+  });
+  document.addEventListener('mousemove', function(e){
+    if(!dragging) return;
+    var w = window.innerWidth - e.clientX;
+    if(w < 220) w = 220;
+    if(w > window.innerWidth * 0.6) w = window.innerWidth * 0.6;
+    panel.style.width = w + 'px';
+  });
+  document.addEventListener('mouseup', function(){
+    if(!dragging) return;
+    dragging = false;
+    handle.classList.remove('active');
+    panel.style.transition = '';
+  });
+})();
 
 })();
 </script>
