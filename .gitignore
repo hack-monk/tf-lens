@@ -4,6 +4,7 @@ tf-lens-*
 
 # ── Generated outputs ─────────────────────────────────────────────────────────
 *.html
+!docs/demo.html
 coverage.out
 
 # ── JS bundles (downloaded by `make bundle`, NOT committed) ───────────────────

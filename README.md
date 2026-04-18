@@ -13,6 +13,8 @@ TF-Lens parses Terraform plan and state files and renders them as clean, interac
 
 ![TF-Lens diagram](docs/Screenshot.png)
 
+**[Live Demo](https://hack-monk.github.io/tf-lens/demo.html)** — interactive diagram with cost, threat, and drift overlays
+
 ## Why TF-Lens?
 
 | Problem | TF-Lens |
