@@ -7,6 +7,7 @@ import (
 	"github.com/hack-monk/tf-lens/internal/cost"
 	"github.com/hack-monk/tf-lens/internal/diff"
 	"github.com/hack-monk/tf-lens/internal/drift"
+	"github.com/hack-monk/tf-lens/internal/flow"
 	"github.com/hack-monk/tf-lens/internal/graph"
 	"github.com/hack-monk/tf-lens/internal/icons"
 	"github.com/hack-monk/tf-lens/internal/parser"
@@ -24,6 +25,8 @@ var (
 	exportThreat  bool
 	exportCost    string
 	exportDrift   string
+	exportFormat  string
+	exportFlow    bool
 )
 
 var exportCmd = &cobra.Command{
@@ -131,26 +134,64 @@ Examples:
 			fmt.Println()
 		}
 
-		// ── 7. Resolve icons ──────────────────────────────────────────────────
-		resolver := icons.NewResolver(exportIconDir)
-
-		// ── 8. Write HTML ─────────────────────────────────────────────────────
-		outPath := exportOut
-		if outPath == "" {
-			outPath = "diagram.html"
+		// ── 7. Flow inference (optional) ──────────────────────────────────────
+		if exportFlow {
+			flows := flow.Infer(g)
+			flow.AnnotateGraph(g, flows)
+			fmt.Printf("🔀  Flow: %d traffic paths inferred\n", len(flows))
 		}
 
-		f, err := os.Create(outPath)
-		if err != nil {
-			return fmt.Errorf("creating output file %q: %w", outPath, err)
-		}
-		defer f.Close()
+		// ── 8. Write output ───────────────────────────────────────────────────
+		switch exportFormat {
+		case "json":
+			outPath := exportOut
+			if outPath == "diagram.html" {
+				outPath = "diagram.json"
+			}
 
-		if err := renderer.ExportHTML(f, g, resolver); err != nil {
-			return fmt.Errorf("rendering diagram: %w", err)
+			f, err := os.Create(outPath)
+			if err != nil {
+				return fmt.Errorf("creating output file %q: %w", outPath, err)
+			}
+			defer f.Close()
+
+			if err := renderer.ExportJSON(f, g); err != nil {
+				return fmt.Errorf("writing JSON: %w", err)
+			}
+			fmt.Printf("✅  JSON written to %s\n", outPath)
+
+		case "threats":
+			outPath := exportOut
+			if outPath == "diagram.html" {
+				outPath = "threats.md"
+			}
+
+			f, err := os.Create(outPath)
+			if err != nil {
+				return fmt.Errorf("creating output file %q: %w", outPath, err)
+			}
+			defer f.Close()
+
+			if err := renderer.ExportThreats(f, g); err != nil {
+				return fmt.Errorf("writing threat report: %w", err)
+			}
+			fmt.Printf("✅  Threat report written to %s\n", outPath)
+
+		default: // "html"
+			resolver := icons.NewResolver(exportIconDir)
+
+			f, err := os.Create(exportOut)
+			if err != nil {
+				return fmt.Errorf("creating output file %q: %w", exportOut, err)
+			}
+			defer f.Close()
+
+			if err := renderer.ExportHTML(f, g, resolver); err != nil {
+				return fmt.Errorf("rendering diagram: %w", err)
+			}
+			fmt.Printf("✅  Diagram written to %s\n", exportOut)
 		}
 
-		fmt.Printf("✅  Diagram written to %s\n", outPath)
 		return nil
 	},
 }
@@ -168,6 +209,10 @@ func init() {
 		"Cost overlay: path to Infracost JSON file, or Terraform directory to auto-run infracost")
 	exportCmd.Flags().StringVar(&exportDrift, "drift", "",
 		"Drift detection: refresh-only plan JSON file, or Terraform directory to auto-run terraform plan -refresh-only")
+	exportCmd.Flags().StringVar(&exportFormat, "format", "html",
+		"Output format: html (default), json, or threats")
+	exportCmd.Flags().BoolVar(&exportFlow, "flow", false,
+		"Infer and overlay runtime traffic/data flow paths")
 }
 
 // resolveCosts handles the --cost flag: if the path is a JSON file, parse it

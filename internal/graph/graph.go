@@ -78,12 +78,23 @@ type Edge struct {
 	ID     string
 	Source string
 	Target string
+	Label  string // Relationship label, e.g. "in subnet", "uses"
+}
+
+// FlowEdge represents an inferred runtime traffic/data flow path.
+type FlowEdge struct {
+	ID     string
+	Source string
+	Target string
+	Label  string // e.g. "HTTPS", "queries", "triggers"
+	Kind   string // "ingress", "data", "event", "internal"
 }
 
 // Graph is the complete node/edge model passed to the renderer.
 type Graph struct {
-	Nodes []*Node
-	Edges []*Edge
+	Nodes     []*Node
+	Edges     []*Edge
+	FlowEdges []*FlowEdge // populated by flow.AnnotateGraph()
 }
 
 // Build creates a Graph from a slice of parsed resources.
@@ -118,19 +129,111 @@ func Build(resources []parser.Resource) *Graph {
 			edgeID := r.Address + "->" + dep
 			if !edgeSet[edgeID] {
 				edgeSet[edgeID] = true
+				depType := ""
+				if n, ok := nodeIndex[dep]; ok {
+					depType = n.Type
+				}
 				g.Edges = append(g.Edges, &Edge{
 					ID:     edgeID,
 					Source: r.Address,
 					Target: dep,
+					Label:  edgeLabel(r.Type, depType),
 				})
 			}
 		}
 	}
 
-	// --- Pass 3: apply container nesting (VPC → Subnet) --------------------
+	// --- Pass 3: apply module grouping (synthetic parent nodes) ------------
+	applyModuleGrouping(g, nodeIndex)
+
+	// --- Pass 4: apply container nesting (VPC → Subnet) --------------------
 	applyNesting(g, nodeIndex)
 
 	return g
+}
+
+// ---- module grouping --------------------------------------------------------
+
+// applyModuleGrouping creates synthetic parent nodes for Terraform modules
+// and sets ParentID on resources that belong to a module. Nested modules
+// (e.g. module.vpc.module.subnets) produce a hierarchy of parent nodes.
+func applyModuleGrouping(g *Graph, nodeIndex map[string]*Node) {
+	// Collect all unique module paths
+	modulePaths := make(map[string]bool)
+	for _, n := range g.Nodes {
+		if n.Module == "" {
+			continue
+		}
+		// For nested modules, register each ancestor too.
+		// e.g. "module.vpc.module.subnets" → ["module.vpc", "module.vpc.module.subnets"]
+		parts := strings.Split(n.Module, ".")
+		for i := 1; i < len(parts); i += 2 {
+			ancestor := strings.Join(parts[:i+1], ".")
+			modulePaths[ancestor] = true
+		}
+	}
+
+	if len(modulePaths) == 0 {
+		return
+	}
+
+	// Create synthetic nodes for each module path
+	for modPath := range modulePaths {
+		if _, exists := nodeIndex[modPath]; exists {
+			continue // don't clobber real resources
+		}
+
+		// Extract short name: "module.vpc" → "vpc"
+		parts := strings.Split(modPath, ".")
+		shortName := parts[len(parts)-1]
+
+		n := &Node{
+			ID:       modPath,
+			Label:    shortName,
+			Type:     "module",
+			Name:     shortName,
+			Category: CategoryUnknown,
+			Module:   parentModulePath(modPath),
+		}
+		g.Nodes = append(g.Nodes, n)
+		nodeIndex[modPath] = n
+	}
+
+	// Set ParentID for module nodes (nested modules)
+	for modPath := range modulePaths {
+		n := nodeIndex[modPath]
+		parent := parentModulePath(modPath)
+		if parent != "" {
+			if _, exists := nodeIndex[parent]; exists {
+				n.ParentID = parent
+			}
+		}
+	}
+
+	// Set ParentID for resource nodes that belong to modules,
+	// but only if they don't already have a parent from nesting rules.
+	for _, n := range g.Nodes {
+		if n.Module == "" || n.Type == "module" {
+			continue
+		}
+		// Don't override existing parent (nesting runs after this, so ParentID is empty here)
+		if n.ParentID == "" {
+			if _, exists := nodeIndex[n.Module]; exists {
+				n.ParentID = n.Module
+			}
+		}
+	}
+}
+
+// parentModulePath returns the parent module path.
+// "module.vpc.module.subnets" → "module.vpc"
+// "module.vpc" → ""
+func parentModulePath(modPath string) string {
+	parts := strings.Split(modPath, ".")
+	if len(parts) <= 2 {
+		return ""
+	}
+	return strings.Join(parts[:len(parts)-2], ".")
 }
 
 // ---- nesting logic ----------------------------------------------------------
@@ -143,14 +246,27 @@ var nestingRules = []struct {
 	attrLink   string // attribute on the child that holds the parent's ID
 	parentAttr string // attribute on the parent that is referenced
 }{
+	// Subnet-level nesting
 	{"aws_subnet", "aws_instance", "subnet_id", "id"},
-	{"aws_subnet", "aws_lambda_function", "subnet_ids", "id"}, // lambda uses a list
+	{"aws_subnet", "aws_lambda_function", "subnet_ids", "id"},
 	{"aws_subnet", "aws_ecs_service", "network_configuration.0.subnets", "id"},
+	{"aws_subnet", "aws_nat_gateway", "subnet_id", "id"},
+	{"aws_subnet", "aws_db_instance", "db_subnet_group_name", "id"},
+	{"aws_subnet", "aws_elasticache_cluster", "subnet_group_name", "id"},
+
+	// VPC-level nesting
 	{"aws_vpc", "aws_subnet", "vpc_id", "id"},
 	{"aws_vpc", "aws_internet_gateway", "vpc_id", "id"},
-	{"aws_vpc", "aws_nat_gateway", "subnet_id", "id"}, // nat is in a subnet in a vpc; handled transitively
 	{"aws_vpc", "aws_security_group", "vpc_id", "id"},
-	{"aws_vpc", "aws_alb", "subnets", "id"}, // ALB spans multiple subnets
+	{"aws_vpc", "aws_alb", "subnets", "id"},
+	{"aws_vpc", "aws_lb", "subnets", "id"},
+	{"aws_vpc", "aws_eks_cluster", "vpc_config.0.subnet_ids", "id"},
+	{"aws_vpc", "aws_lb_target_group", "vpc_id", "id"},
+	{"aws_vpc", "aws_route_table", "vpc_id", "id"},
+	{"aws_vpc", "aws_db_subnet_group", "vpc_id", "id"},
+
+	// ECS cluster → service
+	{"aws_ecs_cluster", "aws_ecs_service", "cluster", "id"},
 }
 
 // applyNesting sets Node.ParentID for resources that live inside a container.
@@ -175,10 +291,12 @@ func applyNesting(g *Graph, nodeIndex map[string]*Node) {
 			}
 		}
 
-		// For each child type, check if its attrLink matches a container
+		// For each child type, check if its attrLink matches a container.
+		// Infrastructure nesting (VPC→Subnet) takes priority over module grouping,
+		// so we allow overriding a module-based parent.
 		for _, child := range byType[rule.child] {
-			if child.ParentID != "" {
-				continue // already nested
+			if child.ParentID != "" && nodeIndex[child.ParentID] != nil && nodeIndex[child.ParentID].Type != "module" {
+				continue // already nested by infrastructure rule
 			}
 			vals := attrStringList(child.Attributes, rule.attrLink)
 			for _, v := range vals {
@@ -218,10 +336,21 @@ var categoryPrefixes = map[string]Category{
 	"aws_kms":                 CategorySecurity,
 	"aws_secretsmanager":      CategorySecurity,
 	"aws_wafv2":               CategorySecurity,
+	"aws_ecr":                 CategoryCompute,
+	"aws_codebuild":           CategoryCompute,
+	"aws_launch_template":     CategoryCompute,
+	"aws_redshift":            CategoryStorage,
+	"aws_rds_cluster":         CategoryStorage,
+	"aws_opensearch":          CategoryStorage,
+	"aws_elasticsearch":       CategoryStorage,
+	"aws_docdb":               CategoryStorage,
+	"aws_neptune":             CategoryStorage,
+	"aws_cloudtrail":          CategorySecurity,
+	"aws_msk":                 CategoryMessaging,
+	"aws_kinesis":             CategoryMessaging,
 	"aws_sns":                 CategoryMessaging,
 	"aws_sqs":                 CategoryMessaging,
 	"aws_api_gateway":         CategoryMessaging,
-	"aws_kinesis":             CategoryMessaging,
 	"aws_sfn":                 CategoryMessaging,
 	"aws_cloudwatch":          CategoryMessaging,
 }
@@ -239,6 +368,113 @@ func classifyCategory(resourceType string) Category {
 		}
 	}
 	return CategoryUnknown
+}
+
+// ---- edge labels ------------------------------------------------------------
+
+// edgeLabelRules maps (source type, target type) → label.
+// Order: checked first-match, so put specific rules before broad ones.
+var edgeLabelRules = []struct {
+	source string // prefix match on source type
+	target string // prefix match on target type
+	label  string
+}{
+	// Networking
+	{"aws_instance", "aws_subnet", "in subnet"},
+	{"aws_instance", "aws_security_group", "attached"},
+	{"aws_instance", "aws_iam", "assumes"},
+	{"aws_subnet", "aws_vpc", "in VPC"},
+	{"aws_subnet", "aws_route_table", "routed by"},
+	{"aws_internet_gateway", "aws_vpc", "attached"},
+	{"aws_nat_gateway", "aws_subnet", "in subnet"},
+	{"aws_nat_gateway", "aws_eip", "uses EIP"},
+	{"aws_route_table", "aws_vpc", "in VPC"},
+	{"aws_route", "aws_internet_gateway", "via IGW"},
+	{"aws_route", "aws_nat_gateway", "via NAT"},
+
+	// Load balancing
+	{"aws_alb", "aws_subnet", "in subnet"},
+	{"aws_alb", "aws_security_group", "attached"},
+	{"aws_lb", "aws_subnet", "in subnet"},
+	{"aws_lb", "aws_security_group", "attached"},
+	{"aws_lb_target_group", "aws_vpc", "in VPC"},
+	{"aws_lb_listener", "aws_lb", "listens on"},
+	{"aws_lb_target_group_attachment", "aws_instance", "targets"},
+
+	// Compute
+	{"aws_lambda_function", "aws_iam_role", "assumes"},
+	{"aws_lambda_function", "aws_subnet", "in subnet"},
+	{"aws_lambda_function", "aws_security_group", "attached"},
+	{"aws_lambda_function", "aws_sqs_queue", "triggered by"},
+	{"aws_lambda_function", "aws_sns_topic", "subscribed"},
+	{"aws_ecs_service", "aws_ecs_cluster", "runs in"},
+	{"aws_ecs_service", "aws_ecs_task_definition", "runs task"},
+	{"aws_ecs_service", "aws_lb_target_group", "registered"},
+	{"aws_ecs_task_definition", "aws_iam_role", "assumes"},
+	{"aws_eks_cluster", "aws_subnet", "in subnet"},
+	{"aws_eks_cluster", "aws_iam_role", "assumes"},
+
+	// Storage
+	{"aws_db_instance", "aws_db_subnet_group", "in subnet group"},
+	{"aws_db_instance", "aws_security_group", "attached"},
+	{"aws_db_instance", "aws_kms_key", "encrypted by"},
+	{"aws_s3_bucket", "aws_kms_key", "encrypted by"},
+
+	// Security
+	{"aws_security_group", "aws_vpc", "in VPC"},
+	{"aws_iam_role_policy", "aws_iam_role", "attached"},
+	{"aws_iam_role_policy_attachment", "aws_iam_role", "attached"},
+
+	// Messaging
+	{"aws_sns_topic_subscription", "aws_sns_topic", "subscribes"},
+	{"aws_sqs_queue_policy", "aws_sqs_queue", "policy for"},
+
+	// Databases
+	{"aws_docdb_cluster", "aws_db_subnet_group", "in subnet group"},
+	{"aws_docdb_cluster", "aws_kms_key", "encrypted by"},
+	{"aws_neptune_cluster", "aws_db_subnet_group", "in subnet group"},
+	{"aws_neptune_cluster", "aws_kms_key", "encrypted by"},
+	{"aws_redshift_cluster", "aws_iam_role", "assumes"},
+	{"aws_redshift_cluster", "aws_kms_key", "encrypted by"},
+
+	// CI/CD
+	{"aws_codebuild_project", "aws_iam_role", "assumes"},
+	{"aws_codebuild_project", "aws_s3_bucket", "artifacts in"},
+	{"aws_codebuild_project", "aws_vpc", "in VPC"},
+
+	// Streaming
+	{"aws_kinesis_stream", "aws_kms_key", "encrypted by"},
+	{"aws_msk_cluster", "aws_subnet", "in subnet"},
+	{"aws_msk_cluster", "aws_security_group", "attached"},
+	{"aws_msk_cluster", "aws_kms_key", "encrypted by"},
+
+	// Monitoring
+	{"aws_cloudwatch_metric_alarm", "aws_sns_topic", "notifies"},
+	{"aws_cloudtrail", "aws_s3_bucket", "logs to"},
+	{"aws_cloudtrail", "aws_kms_key", "encrypted by"},
+	{"aws_cloudtrail", "aws_cloudwatch_log_group", "streams to"},
+
+	// Catch-all patterns by target type
+	{"", "aws_iam_role", "uses role"},
+	{"", "aws_security_group", "uses SG"},
+	{"", "aws_kms_key", "uses key"},
+	{"", "aws_subnet", "in subnet"},
+	{"", "aws_vpc", "in VPC"},
+}
+
+// edgeLabel returns a human-readable label for an edge between two resource types.
+func edgeLabel(sourceType, targetType string) string {
+	if sourceType == "" || targetType == "" {
+		return ""
+	}
+	for _, rule := range edgeLabelRules {
+		sourceMatch := rule.source == "" || strings.HasPrefix(sourceType, rule.source)
+		targetMatch := strings.HasPrefix(targetType, rule.target)
+		if sourceMatch && targetMatch {
+			return rule.label
+		}
+	}
+	return ""
 }
 
 // ---- attribute helpers ------------------------------------------------------

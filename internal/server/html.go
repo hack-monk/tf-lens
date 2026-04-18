@@ -285,6 +285,12 @@ body{
     </button>
   </div>
   <div class="vsp"></div>
+  <div class="bg" id="view-toggle" style="display:none">
+    <button class="btn" id="btn-deps" onclick="setView('deps')" style="background:#4A5568;color:#F7FAFC;border-color:#4A5568">Dependencies</button>
+    <button class="btn" id="btn-flow" onclick="setView('flow')">Flow</button>
+    <button class="btn" id="btn-both" onclick="setView('both')">Both</button>
+  </div>
+  <div class="vsp" id="view-sep" style="display:none"></div>
   <div id="leg">
     <div class="lg">
       <div class="li"><div class="ld" style="background:#147EBA"></div>Network</div>
@@ -298,6 +304,11 @@ body{
       <div class="li"><div class="ld" style="background:#E53E3E;opacity:.7"></div>Removed</div>
       <div class="li"><div class="ld" style="background:#D69E2E"></div>Changed</div>
       <div class="li"><div class="ld" style="background:#9F7AEA"></div>Drifted</div>
+    </div>
+    <div class="lg" id="flow-legend" style="display:none">
+      <div class="li"><div class="ld" style="background:#3182CE"></div>Ingress</div>
+      <div class="li"><div class="ld" style="background:#38A169"></div>Data</div>
+      <div class="li"><div class="ld" style="background:#D69E2E"></div>Event</div>
     </div>
   </div>
 </div>
@@ -407,10 +418,29 @@ function buildDiagram(data){
         'line-color':'#A0AEC0','target-arrow-color':'#718096',
         'target-arrow-shape':'triangle','arrow-scale':0.6,
         'source-distance-from-node':'8px','target-distance-from-node':'8px',opacity:0.85,
+        'label':'data(label)','font-size':'9px',
+        'font-family':"-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif",
+        'font-weight':'600','color':'#718096',
+        'text-background-color':'#F0F2F5','text-background-opacity':0.9,
+        'text-background-padding':'2px','text-rotation':'autorotate','text-margin-y':'-8px',
       }},
       {selector:'edge:selected',style:{'line-color':'#0073BB','target-arrow-color':'#0073BB',width:'2px',opacity:'1'}},
+      {selector:'edge[?flow]',style:{
+        'line-style':'dashed','line-dash-pattern':[6,3],
+        'line-color':'#38A169','target-arrow-color':'#38A169',
+        width:'2px',opacity:0.9,'arrow-scale':0.8,
+        'label':'data(label)','font-size':'9px','font-weight':'700',
+        'color':'#276749','text-background-color':'#F0FFF4',
+        'text-background-opacity':0.95,'text-background-padding':'3px',
+        'text-rotation':'autorotate','text-margin-y':'-8px',
+      }},
+      {selector:'edge[flowKind="ingress"]',style:{'line-color':'#3182CE','target-arrow-color':'#3182CE','color':'#2B6CB0','text-background-color':'#EBF8FF'}},
+      {selector:'edge[flowKind="event"]',style:{'line-color':'#D69E2E','target-arrow-color':'#D69E2E','color':'#975A16','text-background-color':'#FFFFF0'}},
+      {selector:'edge[flowKind="data"]',style:{'line-color':'#38A169','target-arrow-color':'#38A169','color':'#276749','text-background-color':'#F0FFF4'}},
       {selector:'.faded',style:{opacity:0.1}},
       {selector:'.edge-hl',style:{'line-color':'#0073BB','target-arrow-color':'#0073BB',width:'2px',opacity:1}},
+      {selector:'.flow-hidden',style:{display:'none'}},
+      {selector:'.dep-hidden',style:{display:'none'}},
     ],
     layout:{
       name:'dagre',rankDir:'TB',
@@ -548,6 +578,14 @@ function buildDiagram(data){
     document.getElementById('db-rc').textContent=dc.removed;
     document.getElementById('db-uc').textContent=dc.updated;
     document.getElementById('diffbar').classList.add('show');
+  }
+
+  // Flow view toggle
+  var hasFlow = elements.some(function(el){ return el.group==='edges' && el.data.flow; });
+  if(hasFlow){
+    document.getElementById('view-toggle').style.display='';
+    document.getElementById('view-sep').style.display='';
+    document.getElementById('flow-legend').style.display='';
   }
 
   // Events
@@ -737,6 +775,27 @@ document.addEventListener('keydown',function(e){
 
 window.fitG=function(){ cy&&cy.fit(undefined,60); };
 
+// ── Flow view toggle ─────────────────────────────────────────────────────
+var currentView='deps';
+window.setView=function(view){
+  currentView=view;
+  var btnDeps=document.getElementById('btn-deps');
+  var btnFlow=document.getElementById('btn-flow');
+  var btnBoth=document.getElementById('btn-both');
+  var active='background:#4A5568;color:#F7FAFC;border-color:#4A5568';
+  var inactive='';
+  btnDeps.style.cssText=view==='deps'?active:inactive;
+  btnFlow.style.cssText=view==='flow'?active:inactive;
+  btnBoth.style.cssText=view==='both'?active:inactive;
+  if(!cy) return;
+  cy.edges().forEach(function(e){
+    var isFlow=e.data('flow');
+    e.removeClass('flow-hidden dep-hidden');
+    if(view==='deps'&&isFlow) e.addClass('flow-hidden');
+    if(view==='flow'&&!isFlow) e.addClass('dep-hidden');
+  });
+};
+
 // ── Panel resize ─────────────────────────────────────────────────────────
 (function(){
   var handle=document.getElementById('panel-resize');
@@ -761,6 +820,26 @@ window.fitG=function(){ cy&&cy.fit(undefined,60); };
     handle.classList.remove('active');
     panel.style.transition='';
   });
+})();
+
+// ── SSE auto-reload ──────────────────────────────────────────────────────
+(function(){
+  var es;
+  function connectSSE(){
+    es = new EventSource('/api/events');
+    es.addEventListener('reload', function(){
+      console.log('[tf-lens] File changed — reloading graph');
+      refreshGraph();
+    });
+    es.addEventListener('connected', function(){
+      console.log('[tf-lens] Watch mode connected');
+    });
+    es.onerror = function(){
+      es.close();
+      setTimeout(connectSSE, 3000);
+    };
+  }
+  connectSSE();
 })();
 
 // ── Initial load ──────────────────────────────────────────────────────────

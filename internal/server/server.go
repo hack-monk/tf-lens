@@ -1,11 +1,10 @@
 // Package server implements the tf-lens serve HTTP server.
-// It exposes two endpoints:
+// It exposes the following endpoints:
 //
-//	GET /         → serves the interactive diagram HTML
-//	GET /api/graph → returns the graph as JSON (consumed by the diagram JS)
-//
-// The graph is built once at startup. A future --watch flag can trigger
-// rebuilds on file changes without restarting the server.
+//	GET /           → serves the interactive diagram HTML
+//	GET /api/graph  → returns the graph as JSON (consumed by the diagram JS)
+//	GET /api/events → SSE stream that pushes "reload" when the graph changes
+//	GET /health     → health check
 package server
 
 import (
@@ -13,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/hack-monk/tf-lens/internal/graph"
@@ -22,9 +22,15 @@ import (
 // Server holds the running state for the diagram HTTP server.
 type Server struct {
 	port     int
-	g        *graph.Graph
 	resolver *icons.Resolver
+
+	mu       sync.RWMutex
+	g        *graph.Graph
 	elements []element // pre-built, served as JSON
+
+	// SSE subscribers — each is a channel that receives reload notifications
+	subMu sync.Mutex
+	subs  map[chan struct{}]struct{}
 }
 
 // New creates a Server. Call Serve() to start listening.
@@ -33,9 +39,43 @@ func New(port int, g *graph.Graph, resolver *icons.Resolver) *Server {
 		port:     port,
 		g:        g,
 		resolver: resolver,
+		subs:     make(map[chan struct{}]struct{}),
 	}
 	s.elements = buildElements(g)
 	return s
+}
+
+// Reload swaps the graph with a new one and notifies all SSE subscribers.
+func (s *Server) Reload(g *graph.Graph) {
+	s.mu.Lock()
+	s.g = g
+	s.elements = buildElements(g)
+	s.mu.Unlock()
+
+	s.notifySubs()
+}
+
+func (s *Server) notifySubs() {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	for ch := range s.subs {
+		select {
+		case ch <- struct{}{}:
+		default: // skip slow subscribers
+		}
+	}
+}
+
+func (s *Server) addSub(ch chan struct{}) {
+	s.subMu.Lock()
+	s.subs[ch] = struct{}{}
+	s.subMu.Unlock()
+}
+
+func (s *Server) removeSub(ch chan struct{}) {
+	s.subMu.Lock()
+	delete(s.subs, ch)
+	s.subMu.Unlock()
 }
 
 // Serve starts the HTTP server and blocks until it is stopped.
@@ -44,6 +84,7 @@ func (s *Server) Serve() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/graph", s.handleGraph)
+	mux.HandleFunc("/api/events", s.handleEvents)
 	mux.HandleFunc("/health", s.handleHealth)
 
 	addr := fmt.Sprintf(":%d", s.port)
@@ -76,14 +117,20 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 // handleGraph returns the graph elements as JSON.
 // The diagram JS fetches this on load and on every refresh.
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	elements := s.elements
+	nodeCount := len(s.g.Nodes)
+	edgeCount := len(s.g.Edges)
+	s.mu.RUnlock()
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:*")
 	w.Header().Set("Cache-Control", "no-cache")
 
 	resp := graphResponse{
-		Elements:  s.elements,
-		NodeCount: len(s.g.Nodes),
-		EdgeCount: len(s.g.Edges),
+		Elements:  elements,
+		NodeCount: nodeCount,
+		EdgeCount: edgeCount,
 	}
 
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
@@ -91,10 +138,49 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleEvents is an SSE endpoint. Clients connect and receive "reload"
+// events whenever the graph is updated via Reload().
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	ch := make(chan struct{}, 1)
+	s.addSub(ch)
+	defer s.removeSub(ch)
+
+	// Send initial connection event
+	fmt.Fprintf(w, "event: connected\ndata: ok\n\n")
+	flusher.Flush()
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ch:
+			fmt.Fprintf(w, "event: reload\ndata: updated\n\n")
+			flusher.Flush()
+		}
+	}
+}
+
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	nodeCount := len(s.g.Nodes)
+	edgeCount := len(s.g.Edges)
+	s.mu.RUnlock()
+
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","nodes":%d,"edges":%d}`,
-		len(s.g.Nodes), len(s.g.Edges))
+		nodeCount, edgeCount)
 }
 
 // ── JSON response types ──────────────────────────────────────────────────────
@@ -145,4 +231,7 @@ type edgeData struct {
 	ID     string `json:"id"`
 	Source string `json:"source"`
 	Target string `json:"target"`
+	Label  string `json:"label,omitempty"`
+	Flow   bool   `json:"flow,omitempty"`
+	Kind   string `json:"flowKind,omitempty"`
 }

@@ -162,6 +162,380 @@ func TestIAM_WildcardTrust(t *testing.T) {
 	assertSeverity(t, findings, "IAM001", threat.SeverityCritical)
 }
 
+// ── KMS tests ───────────────────────────────────────────────────────────────
+
+func TestKMS_NoRotation(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_kms_key.main",
+		Type:    "aws_kms_key",
+		Name:    "main",
+		Attributes: map[string]any{
+			"enable_key_rotation": false,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "KMS001")
+	assertSeverity(t, findings, "KMS001", threat.SeverityMedium)
+}
+
+func TestKMS_WithRotation_NoFinding(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_kms_key.good",
+		Type:    "aws_kms_key",
+		Name:    "good",
+		Attributes: map[string]any{
+			"enable_key_rotation": true,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	for _, f := range findings {
+		if f.Code == "KMS001" {
+			t.Error("expected no KMS001 finding when rotation enabled")
+		}
+	}
+}
+
+// ── RDS Cluster tests ───────────────────────────────────────────────────────
+
+func TestRDSCluster_NoEncryption(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_rds_cluster.aurora",
+		Type:    "aws_rds_cluster",
+		Name:    "aurora",
+		Attributes: map[string]any{
+			"storage_encrypted": false,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "RDSC001")
+	assertSeverity(t, findings, "RDSC001", threat.SeverityHigh)
+}
+
+func TestRDSCluster_NoDeletionProtection(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_rds_cluster.aurora",
+		Type:    "aws_rds_cluster",
+		Name:    "aurora",
+		Attributes: map[string]any{
+			"storage_encrypted": true,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "RDSC002")
+}
+
+// ── ECR tests ───────────────────────────────────────────────────────────────
+
+func TestECR_NoScanOnPush(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_ecr_repository.app",
+		Type:    "aws_ecr_repository",
+		Name:    "app",
+		Attributes: map[string]any{
+			"image_tag_mutability": "MUTABLE",
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "ECR001")
+	assertHasCode(t, findings, "ECR002")
+}
+
+func TestECR_Immutable_WithScan_NoMutableFinding(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_ecr_repository.good",
+		Type:    "aws_ecr_repository",
+		Name:    "good",
+		Attributes: map[string]any{
+			"image_tag_mutability": "IMMUTABLE",
+			"image_scanning_configuration": []any{
+				map[string]any{"scan_on_push": true},
+			},
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	for _, f := range findings {
+		if f.Code == "ECR001" || f.Code == "ECR002" {
+			t.Errorf("unexpected finding %s for well-configured ECR", f.Code)
+		}
+	}
+}
+
+// ── OpenSearch tests ────────────────────────────────────────────────────────
+
+func TestOpenSearch_NoEncryption(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_opensearch_domain.es",
+		Type:    "aws_opensearch_domain",
+		Name:    "es",
+		Attributes: map[string]any{},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "OS001")
+	assertHasCode(t, findings, "OS002")
+	assertHasCode(t, findings, "OS003")
+}
+
+// ── Redshift tests ──────────────────────────────────────────────────────────
+
+func TestRedshift_PublicUnencrypted(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_redshift_cluster.dw",
+		Type:    "aws_redshift_cluster",
+		Name:    "dw",
+		Attributes: map[string]any{
+			"encrypted":            false,
+			"publicly_accessible":  true,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "RS001")
+	assertHasCode(t, findings, "RS002")
+	assertSeverity(t, findings, "RS002", threat.SeverityCritical)
+}
+
+// ── ECS Task Definition tests ───────────────────────────────────────────────
+
+func TestECS_PrivilegedContainer(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_ecs_task_definition.app",
+		Type:    "aws_ecs_task_definition",
+		Name:    "app",
+		Attributes: map[string]any{
+			"container_definitions": `[{"name":"app","image":"nginx","privileged":true}]`,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "ECS001")
+	assertSeverity(t, findings, "ECS001", threat.SeverityHigh)
+}
+
+// ── API Gateway tests ───────────────────────────────────────────────────────
+
+func TestAPIGW_NoAccessLogs(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_api_gateway_stage.prod",
+		Type:    "aws_api_gateway_stage",
+		Name:    "prod",
+		Attributes: map[string]any{},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "APIGW002")
+}
+
+// ── EC2 Instance tests ──────────────────────────────────────────────────────
+
+func TestEC2_NoIMDSv2(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_instance.web",
+		Type:    "aws_instance",
+		Name:    "web",
+		Attributes: map[string]any{
+			"associate_public_ip_address": true,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "EC2001")
+	assertHasCode(t, findings, "EC2002")
+	assertSeverity(t, findings, "EC2001", threat.SeverityHigh)
+}
+
+func TestEC2_IMDSv2_Enforced(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_instance.good",
+		Type:    "aws_instance",
+		Name:    "good",
+		Attributes: map[string]any{
+			"monitoring": true,
+			"metadata_options": []any{
+				map[string]any{"http_tokens": "required"},
+			},
+			"root_block_device": []any{
+				map[string]any{"encrypted": true},
+			},
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	for _, f := range findings {
+		if f.Code == "EC2001" || f.Code == "EC2004" {
+			t.Errorf("unexpected finding %s for well-configured EC2", f.Code)
+		}
+	}
+}
+
+// ── EBS Volume tests ────────────────────────────────────────────────────────
+
+func TestEBS_Unencrypted(t *testing.T) {
+	resources := []parser.Resource{{
+		Address:    "aws_ebs_volume.data",
+		Type:       "aws_ebs_volume",
+		Name:       "data",
+		Attributes: map[string]any{"encrypted": false},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "EBS001")
+	assertSeverity(t, findings, "EBS001", threat.SeverityHigh)
+}
+
+// ── CloudTrail tests ────────────────────────────────────────────────────────
+
+func TestCloudTrail_Weak(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_cloudtrail.main",
+		Type:    "aws_cloudtrail",
+		Name:    "main",
+		Attributes: map[string]any{
+			"is_multi_region_trail":      false,
+			"enable_log_file_validation": false,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "CT001")
+	assertHasCode(t, findings, "CT002")
+	assertHasCode(t, findings, "CT003")
+}
+
+// ── Load Balancer tests ─────────────────────────────────────────────────────
+
+func TestALB_NoDropHeaders(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_alb.web",
+		Type:    "aws_alb",
+		Name:    "web",
+		Attributes: map[string]any{
+			"drop_invalid_header_fields": false,
+			"internal":                   false,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "ALB001")
+	assertHasCode(t, findings, "ALB003")
+}
+
+// ── Launch Template tests ───────────────────────────────────────────────────
+
+func TestLaunchTemplate_NoIMDSv2(t *testing.T) {
+	resources := []parser.Resource{{
+		Address:    "aws_launch_template.app",
+		Type:       "aws_launch_template",
+		Name:       "app",
+		Attributes: map[string]any{},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "LT001")
+}
+
+// ── Kinesis tests ───────────────────────────────────────────────────────────
+
+func TestKinesis_NoEncryption(t *testing.T) {
+	resources := []parser.Resource{{
+		Address:    "aws_kinesis_stream.events",
+		Type:       "aws_kinesis_stream",
+		Name:       "events",
+		Attributes: map[string]any{"encryption_type": "NONE"},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "KIN001")
+}
+
+// ── MSK tests ───────────────────────────────────────────────────────────────
+
+func TestMSK_NoEncryption(t *testing.T) {
+	resources := []parser.Resource{{
+		Address:    "aws_msk_cluster.kafka",
+		Type:       "aws_msk_cluster",
+		Name:       "kafka",
+		Attributes: map[string]any{},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "MSK001")
+	assertHasCode(t, findings, "MSK003")
+}
+
+// ── DocumentDB tests ────────────────────────────────────────────────────────
+
+func TestDocDB_Unencrypted(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_docdb_cluster.docs",
+		Type:    "aws_docdb_cluster",
+		Name:    "docs",
+		Attributes: map[string]any{
+			"storage_encrypted": false,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "DOC001")
+	assertHasCode(t, findings, "DOC002")
+}
+
+// ── Neptune tests ───────────────────────────────────────────────────────────
+
+func TestNeptune_Unencrypted(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_neptune_cluster.graph",
+		Type:    "aws_neptune_cluster",
+		Name:    "graph",
+		Attributes: map[string]any{
+			"storage_encrypted": false,
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "NEP001")
+	assertHasCode(t, findings, "NEP002")
+}
+
+// ── CodeBuild tests ─────────────────────────────────────────────────────────
+
+func TestCodeBuild_Privileged(t *testing.T) {
+	resources := []parser.Resource{{
+		Address: "aws_codebuild_project.build",
+		Type:    "aws_codebuild_project",
+		Name:    "build",
+		Attributes: map[string]any{
+			"environment": []any{
+				map[string]any{"privileged_mode": true},
+			},
+		},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "CB001")
+	assertSeverity(t, findings, "CB001", threat.SeverityHigh)
+}
+
+// ── EFS tests ───────────────────────────────────────────────────────────────
+
+func TestEFS_Unencrypted(t *testing.T) {
+	resources := []parser.Resource{{
+		Address:    "aws_efs_file_system.data",
+		Type:       "aws_efs_file_system",
+		Name:       "data",
+		Attributes: map[string]any{"encrypted": false},
+	}}
+
+	findings := threat.Analyse(resources)
+	assertHasCode(t, findings, "EFS001")
+}
+
 // ── Summary tests ─────────────────────────────────────────────────────────────
 
 func TestSortedBySeverity(t *testing.T) {

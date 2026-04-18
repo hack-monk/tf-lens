@@ -115,6 +115,126 @@ func TestBuild_SubnetNesting(t *testing.T) {
 	}
 }
 
+// ── Module grouping tests ───────────────────────────────────────────────────
+
+func TestBuild_ModuleGrouping(t *testing.T) {
+	resources := []parser.Resource{
+		{
+			Address:    "module.network.aws_vpc.main",
+			Type:       "aws_vpc",
+			Name:       "main",
+			Provider:   "aws",
+			Module:     "module.network",
+			Attributes: map[string]any{"id": "vpc-001"},
+		},
+		{
+			Address:    "module.network.aws_subnet.public",
+			Type:       "aws_subnet",
+			Name:       "public",
+			Provider:   "aws",
+			Module:     "module.network",
+			Attributes: map[string]any{"id": "subnet-001", "vpc_id": "vpc-001"},
+		},
+		{
+			Address:    "aws_instance.standalone",
+			Type:       "aws_instance",
+			Name:       "standalone",
+			Provider:   "aws",
+			Attributes: map[string]any{"id": "i-001"},
+		},
+	}
+
+	g := graph.Build(resources)
+	byID := make(map[string]*graph.Node)
+	for _, n := range g.Nodes {
+		byID[n.ID] = n
+	}
+
+	// Synthetic module node should exist
+	modNode, ok := byID["module.network"]
+	if !ok {
+		t.Fatal("expected synthetic node for module.network")
+	}
+	if modNode.Type != "module" {
+		t.Errorf("module node type = %q, want module", modNode.Type)
+	}
+
+	// VPC should be nested under module (infrastructure nesting may override for subnet)
+	vpc := byID["module.network.aws_vpc.main"]
+	if vpc == nil {
+		t.Fatal("vpc node not found")
+	}
+	if vpc.ParentID != "module.network" {
+		t.Errorf("vpc.ParentID = %q, want module.network", vpc.ParentID)
+	}
+
+	// Subnet should be nested under VPC (infra nesting overrides module grouping)
+	subnet := byID["module.network.aws_subnet.public"]
+	if subnet == nil {
+		t.Fatal("subnet node not found")
+	}
+	if subnet.ParentID != "module.network.aws_vpc.main" {
+		t.Errorf("subnet.ParentID = %q, want module.network.aws_vpc.main", subnet.ParentID)
+	}
+
+	// Standalone resource should have no parent
+	standalone := byID["aws_instance.standalone"]
+	if standalone == nil {
+		t.Fatal("standalone node not found")
+	}
+	if standalone.ParentID != "" {
+		t.Errorf("standalone.ParentID = %q, want empty", standalone.ParentID)
+	}
+}
+
+func TestBuild_NestedModules(t *testing.T) {
+	resources := []parser.Resource{
+		{
+			Address:    "module.infra.module.vpc.aws_vpc.main",
+			Type:       "aws_vpc",
+			Name:       "main",
+			Provider:   "aws",
+			Module:     "module.infra.module.vpc",
+			Attributes: map[string]any{"id": "vpc-001"},
+		},
+	}
+
+	g := graph.Build(resources)
+	byID := make(map[string]*graph.Node)
+	for _, n := range g.Nodes {
+		byID[n.ID] = n
+	}
+
+	// Both module levels should exist
+	if _, ok := byID["module.infra"]; !ok {
+		t.Error("expected synthetic node for module.infra")
+	}
+	if _, ok := byID["module.infra.module.vpc"]; !ok {
+		t.Error("expected synthetic node for module.infra.module.vpc")
+	}
+
+	// Inner module should be nested under outer module
+	inner := byID["module.infra.module.vpc"]
+	if inner.ParentID != "module.infra" {
+		t.Errorf("inner module ParentID = %q, want module.infra", inner.ParentID)
+	}
+
+	// VPC should be nested under inner module
+	vpc := byID["module.infra.module.vpc.aws_vpc.main"]
+	if vpc.ParentID != "module.infra.module.vpc" {
+		t.Errorf("vpc.ParentID = %q, want module.infra.module.vpc", vpc.ParentID)
+	}
+}
+
+func TestBuild_NoModules_NoSyntheticNodes(t *testing.T) {
+	g := graph.Build(sampleResources())
+	for _, n := range g.Nodes {
+		if n.Type == "module" {
+			t.Errorf("unexpected synthetic module node: %s", n.ID)
+		}
+	}
+}
+
 func TestBuild_EmptyInput(t *testing.T) {
 	g := graph.Build(nil)
 	if g == nil {

@@ -12,6 +12,188 @@ import (
 	"github.com/hack-monk/tf-lens/internal/icons"
 )
 
+// ExportThreats writes a threat findings report in markdown table format.
+func ExportThreats(w io.Writer, g *graph.Graph) error {
+	// Collect all nodes with threats, sorted by severity
+	type finding struct {
+		Resource    string
+		Type        string
+		Code        string
+		Severity    string
+		Title       string
+		Detail      string
+		Remediation string
+	}
+
+	var findings []finding
+	counts := map[string]int{"critical": 0, "high": 0, "medium": 0, "info": 0}
+
+	for _, n := range g.Nodes {
+		for _, f := range n.ThreatFindings {
+			findings = append(findings, finding{
+				Resource:    n.ID,
+				Type:        n.Type,
+				Code:        f.Code,
+				Severity:    f.Severity,
+				Title:       f.Title,
+				Detail:      f.Detail,
+				Remediation: f.Remediation,
+			})
+			counts[f.Severity]++
+		}
+	}
+
+	// Sort by severity weight (critical first)
+	sevWeight := map[string]int{"critical": 4, "high": 3, "medium": 2, "info": 1}
+	for i := 1; i < len(findings); i++ {
+		for j := i; j > 0 && sevWeight[findings[j].Severity] > sevWeight[findings[j-1].Severity]; j-- {
+			findings[j], findings[j-1] = findings[j-1], findings[j]
+		}
+	}
+
+	total := len(findings)
+	sevIcon := map[string]string{"critical": "🔴", "high": "🟠", "medium": "🟡", "info": "🔵"}
+
+	fmt.Fprintf(w, "# TF-Lens Threat Report\n\n")
+	fmt.Fprintf(w, "**%d findings** across %d resources\n\n", total, len(g.Nodes))
+	fmt.Fprintf(w, "| Severity | Count |\n")
+	fmt.Fprintf(w, "|----------|-------|\n")
+	if counts["critical"] > 0 {
+		fmt.Fprintf(w, "| 🔴 Critical | %d |\n", counts["critical"])
+	}
+	if counts["high"] > 0 {
+		fmt.Fprintf(w, "| 🟠 High | %d |\n", counts["high"])
+	}
+	if counts["medium"] > 0 {
+		fmt.Fprintf(w, "| 🟡 Medium | %d |\n", counts["medium"])
+	}
+	if counts["info"] > 0 {
+		fmt.Fprintf(w, "| 🔵 Info | %d |\n", counts["info"])
+	}
+	fmt.Fprintf(w, "\n---\n\n")
+
+	fmt.Fprintf(w, "## Findings\n\n")
+	fmt.Fprintf(w, "| Sev | Code | Resource | Title | Remediation |\n")
+	fmt.Fprintf(w, "|-----|------|----------|-------|-------------|\n")
+	for _, f := range findings {
+		icon := sevIcon[f.Severity]
+		fmt.Fprintf(w, "| %s | %s | `%s` | %s | %s |\n",
+			icon, f.Code, f.Resource, f.Title, f.Remediation)
+	}
+
+	if total == 0 {
+		fmt.Fprintf(w, "\n✅ No security findings detected.\n")
+	}
+
+	return nil
+}
+
+// ExportJSON writes the graph as a JSON document for programmatic consumption.
+// Includes summary statistics for threats, costs, drift, and diff.
+func ExportJSON(w io.Writer, g *graph.Graph) error {
+	elements := buildElements(g)
+
+	// Build summary stats
+	threatCounts := map[string]int{"critical": 0, "high": 0, "medium": 0, "info": 0}
+	diffCounts := map[string]int{"added": 0, "removed": 0, "updated": 0}
+	var totalCost float64
+	var driftCount int
+
+	for _, n := range g.Nodes {
+		if n.ThreatMaxSeverity != "" {
+			threatCounts[n.ThreatMaxSeverity]++
+		}
+		if n.ChangeType != "" {
+			diffCounts[string(n.ChangeType)]++
+		}
+		totalCost += n.MonthlyCost
+		if n.DriftStatus != "" {
+			driftCount++
+		}
+	}
+
+	totalThreats := 0
+	for _, v := range threatCounts {
+		totalThreats += v
+	}
+
+	resp := struct {
+		Elements  []element `json:"elements"`
+		NodeCount int       `json:"nodeCount"`
+		EdgeCount int       `json:"edgeCount"`
+		Summary   *jsonSummary `json:"summary,omitempty"`
+	}{
+		Elements:  elements,
+		NodeCount: len(g.Nodes),
+		EdgeCount: len(g.Edges),
+	}
+
+	// Only include summary if there's data
+	if totalThreats > 0 || totalCost > 0 || driftCount > 0 ||
+		diffCounts["added"]+diffCounts["removed"]+diffCounts["updated"] > 0 {
+		resp.Summary = &jsonSummary{}
+		if totalThreats > 0 {
+			resp.Summary.Threats = &jsonThreatSummary{
+				Total:    totalThreats,
+				Critical: threatCounts["critical"],
+				High:     threatCounts["high"],
+				Medium:   threatCounts["medium"],
+				Info:     threatCounts["info"],
+			}
+		}
+		if totalCost > 0 {
+			resp.Summary.Cost = &jsonCostSummary{
+				MonthlyCost: totalCost,
+			}
+		}
+		if driftCount > 0 {
+			resp.Summary.Drift = &jsonDriftSummary{
+				DriftedResources: driftCount,
+			}
+		}
+		if diffCounts["added"]+diffCounts["removed"]+diffCounts["updated"] > 0 {
+			resp.Summary.Diff = &jsonDiffSummary{
+				Added:   diffCounts["added"],
+				Removed: diffCounts["removed"],
+				Updated: diffCounts["updated"],
+			}
+		}
+	}
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(resp)
+}
+
+type jsonSummary struct {
+	Threats *jsonThreatSummary `json:"threats,omitempty"`
+	Cost    *jsonCostSummary   `json:"cost,omitempty"`
+	Drift   *jsonDriftSummary  `json:"drift,omitempty"`
+	Diff    *jsonDiffSummary   `json:"diff,omitempty"`
+}
+
+type jsonThreatSummary struct {
+	Total    int `json:"total"`
+	Critical int `json:"critical"`
+	High     int `json:"high"`
+	Medium   int `json:"medium"`
+	Info     int `json:"info"`
+}
+
+type jsonCostSummary struct {
+	MonthlyCost float64 `json:"monthlyCost"`
+}
+
+type jsonDriftSummary struct {
+	DriftedResources int `json:"driftedResources"`
+}
+
+type jsonDiffSummary struct {
+	Added   int `json:"added"`
+	Removed int `json:"removed"`
+	Updated int `json:"updated"`
+}
+
 func ExportHTML(w io.Writer, g *graph.Graph, resolver *icons.Resolver) error {
 	elements := buildElements(g)
 	elemJSON, err := json.MarshalIndent(elements, "", "  ")
@@ -63,6 +245,14 @@ var abbrevMap = map[string]string{
 	"aws_efs_file_system": "EFS", "aws_security_group": "SG", "aws_iam_role": "IAM",
 	"aws_kms_key": "KMS", "aws_secretsmanager_secret": "SM", "aws_sns_topic": "SNS",
 	"aws_sqs_queue": "SQS", "aws_api_gateway_rest_api": "API", "aws_cloudwatch_log_group": "CW",
+	"aws_rds_cluster": "RDS", "aws_ecr_repository": "ECR", "aws_redshift_cluster": "RS",
+	"aws_opensearch_domain": "OS", "aws_elasticsearch_domain": "ES",
+	"aws_ecs_task_definition": "ECS", "aws_ecs_cluster": "ECS",
+	"aws_api_gateway_stage": "API", "aws_apigatewayv2_api": "API", "aws_apigatewayv2_stage": "API",
+	"aws_cloudtrail": "CT", "aws_launch_template": "LT", "aws_kinesis_stream": "KDS",
+	"aws_msk_cluster": "MSK", "aws_docdb_cluster": "DOC", "aws_neptune_cluster": "NEP",
+	"aws_codebuild_project": "CB",
+	"module": "MOD",
 }
 
 func abbrev(t string) string {
@@ -142,6 +332,9 @@ type edgeData struct {
 	ID     string `json:"id"`
 	Source string `json:"source"`
 	Target string `json:"target"`
+	Label  string `json:"label,omitempty"`
+	Flow   bool   `json:"flow,omitempty"`
+	Kind   string `json:"flowKind,omitempty"`
 }
 
 type element struct {
@@ -185,10 +378,21 @@ func buildElements(g *graph.Graph) []element {
 		if nodeIDs[e.Source] && nodeIDs[e.Target] {
 			elems = append(elems, element{
 				Group: "edges",
-				Data:  edgeData{ID: e.ID, Source: e.Source, Target: e.Target},
+				Data:  edgeData{ID: e.ID, Source: e.Source, Target: e.Target, Label: e.Label},
 			})
 		}
 	}
+
+	// Flow edges (runtime traffic paths)
+	for _, f := range g.FlowEdges {
+		if nodeIDs[f.Source] && nodeIDs[f.Target] {
+			elems = append(elems, element{
+				Group: "edges",
+				Data:  edgeData{ID: f.ID, Source: f.Source, Target: f.Target, Label: f.Label, Flow: true, Kind: f.Kind},
+			})
+		}
+	}
+
 	return elems
 }
 
@@ -541,6 +745,12 @@ body{
     </button>
   </div>
   <div class="vsp"></div>
+  <div class="bg" id="view-toggle" style="display:none">
+    <button class="btn" id="btn-deps" onclick="setView('deps')" style="background:#4A5568;color:#F7FAFC;border-color:#4A5568">Dependencies</button>
+    <button class="btn" id="btn-flow" onclick="setView('flow')">Flow</button>
+    <button class="btn" id="btn-both" onclick="setView('both')">Both</button>
+  </div>
+  <div class="vsp" id="view-sep" style="display:none"></div>
   <div id="leg">
     <div class="lg">
       <div class="li"><div class="ld" style="background:#147EBA"></div>Network</div>
@@ -554,6 +764,11 @@ body{
       <div class="li"><div class="ld" style="background:#E53E3E;opacity:.7"></div>Removed</div>
       <div class="li"><div class="ld" style="background:#D69E2E"></div>Changed</div>
       <div class="li"><div class="ld" style="background:#9F7AEA"></div>Drifted</div>
+    </div>
+    <div class="lg" id="flow-legend" style="display:none">
+      <div class="li"><div class="ld" style="background:#3182CE"></div>Ingress</div>
+      <div class="li"><div class="ld" style="background:#38A169"></div>Data</div>
+      <div class="li"><div class="ld" style="background:#D69E2E"></div>Event</div>
     </div>
   </div>
 </div>
@@ -687,11 +902,35 @@ var cy = cytoscape({
         'source-distance-from-node': '8px',
         'target-distance-from-node': '8px',
         'opacity': 0.85,
+        'label': 'data(label)',
+        'font-size': '9px',
+        'font-family': "-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif",
+        'font-weight': '600',
+        'color': '#718096',
+        'text-background-color': '#F0F2F5',
+        'text-background-opacity': 0.9,
+        'text-background-padding': '2px',
+        'text-rotation': 'autorotate',
+        'text-margin-y': '-8px',
       }
     },
     {selector:'edge:selected',    style:{'line-color':'#0073BB','target-arrow-color':'#0073BB','width':'2px','opacity':'1'}},
+    {selector:'edge[?flow]',      style:{
+        'line-style':'dashed','line-dash-pattern':[6,3],
+        'line-color':'#38A169','target-arrow-color':'#38A169',
+        'width':'2px','opacity':0.9,'arrow-scale':0.8,
+        'label':'data(label)','font-size':'9px','font-weight':'700',
+        'color':'#276749','text-background-color':'#F0FFF4',
+        'text-background-opacity':0.95,'text-background-padding':'3px',
+        'text-rotation':'autorotate','text-margin-y':'-8px',
+    }},
+    {selector:'edge[flowKind="ingress"]', style:{'line-color':'#3182CE','target-arrow-color':'#3182CE','color':'#2B6CB0','text-background-color':'#EBF8FF'}},
+    {selector:'edge[flowKind="event"]',   style:{'line-color':'#D69E2E','target-arrow-color':'#D69E2E','color':'#975A16','text-background-color':'#FFFFF0'}},
+    {selector:'edge[flowKind="data"]',    style:{'line-color':'#38A169','target-arrow-color':'#38A169','color':'#276749','text-background-color':'#F0FFF4'}},
     {selector:'.faded',           style:{opacity:0.1}},
     {selector:'.edge-hl',         style:{'line-color':'#0073BB','target-arrow-color':'#0073BB',width:'2px',opacity:1}},
+    {selector:'.flow-hidden',     style:{display:'none'}},
+    {selector:'.dep-hidden',      style:{display:'none'}},
   ],
   layout: {
     name:'dagre', rankDir:'TB',
@@ -1037,6 +1276,34 @@ document.addEventListener('keydown',function(e){
   if(e.key==='/'){e.preventDefault(); document.getElementById('q').focus();}
   if(e.key==='?') toggleHelp();
 });
+
+// ── Flow view toggle ─────────────────────────────────────────────────────
+var hasFlow = ELEMENTS.some(function(el){ return el.group==='edges' && el.data.flow; });
+if(hasFlow){
+  document.getElementById('view-toggle').style.display='';
+  document.getElementById('view-sep').style.display='';
+  document.getElementById('flow-legend').style.display='';
+}
+
+var currentView = 'deps';
+window.setView = function(view){
+  currentView = view;
+  var btnDeps = document.getElementById('btn-deps');
+  var btnFlow = document.getElementById('btn-flow');
+  var btnBoth = document.getElementById('btn-both');
+  var active = 'background:#4A5568;color:#F7FAFC;border-color:#4A5568';
+  var inactive = '';
+  btnDeps.style.cssText = view==='deps' ? active : inactive;
+  btnFlow.style.cssText = view==='flow' ? active : inactive;
+  btnBoth.style.cssText = view==='both' ? active : inactive;
+
+  cy.edges().forEach(function(e){
+    var isFlow = e.data('flow');
+    e.removeClass('flow-hidden dep-hidden');
+    if(view==='deps' && isFlow) e.addClass('flow-hidden');
+    if(view==='flow' && !isFlow) e.addClass('dep-hidden');
+  });
+};
 
 // ── Panel resize ─────────────────────────────────────────────────────────
 (function(){

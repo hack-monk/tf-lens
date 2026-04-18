@@ -18,6 +18,14 @@ var abbrevMap = map[string]string{
 	"aws_efs_file_system": "EFS", "aws_security_group": "SG", "aws_iam_role": "IAM",
 	"aws_kms_key": "KMS", "aws_secretsmanager_secret": "SM", "aws_sns_topic": "SNS",
 	"aws_sqs_queue": "SQS", "aws_api_gateway_rest_api": "API", "aws_cloudwatch_log_group": "CW",
+	"aws_rds_cluster": "RDS", "aws_ecr_repository": "ECR", "aws_redshift_cluster": "RS",
+	"aws_opensearch_domain": "OS", "aws_elasticsearch_domain": "ES",
+	"aws_ecs_task_definition": "ECS", "aws_ecs_cluster": "ECS",
+	"aws_api_gateway_stage": "API", "aws_apigatewayv2_api": "API", "aws_apigatewayv2_stage": "API",
+	"aws_cloudtrail": "CT", "aws_launch_template": "LT", "aws_kinesis_stream": "KDS",
+	"aws_msk_cluster": "MSK", "aws_docdb_cluster": "DOC", "aws_neptune_cluster": "NEP",
+	"aws_codebuild_project": "CB",
+	"module": "MOD",
 }
 
 func getAbbrev(resourceType string) string {
@@ -70,10 +78,21 @@ func buildElements(g *graph.Graph) []element {
 		if nodeIDs[e.Source] && nodeIDs[e.Target] {
 			elems = append(elems, element{
 				Group: "edges",
-				Data:  edgeData{ID: e.ID, Source: e.Source, Target: e.Target},
+				Data:  edgeData{ID: e.ID, Source: e.Source, Target: e.Target, Label: e.Label},
 			})
 		}
 	}
+
+	// Flow edges (runtime traffic paths)
+	for _, f := range g.FlowEdges {
+		if nodeIDs[f.Source] && nodeIDs[f.Target] {
+			elems = append(elems, element{
+				Group: "edges",
+				Data:  edgeData{ID: f.ID, Source: f.Source, Target: f.Target, Label: f.Label, Flow: true, Kind: f.Kind},
+			})
+		}
+	}
+
 	return elems
 }
 
