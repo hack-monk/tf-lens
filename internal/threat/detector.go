@@ -2,6 +2,7 @@ package threat
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/hack-monk/tf-lens/internal/parser"
@@ -1670,10 +1671,7 @@ func containsSecretKeyword(key string) bool {
 }
 
 func sortFindings(findings []Finding) {
-	// Simple insertion sort by severity weight descending
-	for i := 1; i < len(findings); i++ {
-		for j := i; j > 0 && findings[j].Severity.Weight() > findings[j-1].Severity.Weight(); j-- {
-			findings[j], findings[j-1] = findings[j-1], findings[j]
-		}
-	}
+	sort.Slice(findings, func(i, j int) bool {
+		return findings[i].Severity.Weight() > findings[j].Severity.Weight()
+	})
 }

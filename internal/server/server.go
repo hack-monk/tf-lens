@@ -26,7 +26,7 @@ type Server struct {
 
 	mu       sync.RWMutex
 	g        *graph.Graph
-	elements []element // pre-built, served as JSON
+	elements []graph.Element // pre-built, served as JSON
 
 	// SSE subscribers — each is a channel that receives reload notifications
 	subMu sync.Mutex
@@ -186,52 +186,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // ── JSON response types ──────────────────────────────────────────────────────
 
 type graphResponse struct {
-	Elements  []element `json:"elements"`
-	NodeCount int       `json:"nodeCount"`
-	EdgeCount int       `json:"edgeCount"`
-}
-
-type element struct {
-	Group string      `json:"group"`
-	Data  interface{} `json:"data"`
-}
-
-type nodeData struct {
-	ID             string   `json:"id"`
-	Label          string   `json:"label"`
-	Parent         string   `json:"parent,omitempty"`
-	Type           string   `json:"type"`
-	Category       string   `json:"category"`
-	ChangeType     string   `json:"changeType,omitempty"`
-	Abbrev         string   `json:"abbrev"`
-	IsParent       bool     `json:"isParent"`
-	ThreatSeverity string        `json:"threatSeverity,omitempty"`
-	ThreatCodes    []string      `json:"threatCodes,omitempty"`
-	ThreatFindings []findingData     `json:"threatFindings,omitempty"`
-	MonthlyCost    float64           `json:"monthlyCost,omitempty"`
-	DriftStatus    string            `json:"driftStatus,omitempty"`
-	DriftChanges   []driftChangeData `json:"driftChanges,omitempty"`
-}
-
-type driftChangeData struct {
-	Path     string `json:"path"`
-	Expected string `json:"expected"`
-	Actual   string `json:"actual"`
-}
-
-type findingData struct {
-	Code        string `json:"code"`
-	Severity    string `json:"severity"`
-	Title       string `json:"title"`
-	Detail      string `json:"detail"`
-	Remediation string `json:"remediation"`
-}
-
-type edgeData struct {
-	ID     string `json:"id"`
-	Source string `json:"source"`
-	Target string `json:"target"`
-	Label  string `json:"label,omitempty"`
-	Flow   bool   `json:"flow,omitempty"`
-	Kind   string `json:"flowKind,omitempty"`
+	Elements  []graph.Element `json:"elements"`
+	NodeCount int             `json:"nodeCount"`
+	EdgeCount int             `json:"edgeCount"`
 }

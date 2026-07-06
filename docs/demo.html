@@ -337,6 +337,12 @@ body{
     </button>
   </div>
   <div class="vsp"></div>
+  <div class="bg" id="view-toggle" style="display:none">
+    <button class="btn" id="btn-deps" onclick="setView('deps')" style="background:#4A5568;color:#F7FAFC;border-color:#4A5568">Dependencies</button>
+    <button class="btn" id="btn-flow" onclick="setView('flow')">Flow</button>
+    <button class="btn" id="btn-both" onclick="setView('both')">Both</button>
+  </div>
+  <div class="vsp" id="view-sep" style="display:none"></div>
   <div id="leg">
     <div class="lg">
       <div class="li"><div class="ld" style="background:#147EBA"></div>Network</div>
@@ -350,6 +356,11 @@ body{
       <div class="li"><div class="ld" style="background:#E53E3E;opacity:.7"></div>Removed</div>
       <div class="li"><div class="ld" style="background:#D69E2E"></div>Changed</div>
       <div class="li"><div class="ld" style="background:#9F7AEA"></div>Drifted</div>
+    </div>
+    <div class="lg" id="flow-legend" style="display:none">
+      <div class="li"><div class="ld" style="background:#3182CE"></div>Ingress</div>
+      <div class="li"><div class="ld" style="background:#38A169"></div>Data</div>
+      <div class="li"><div class="ld" style="background:#D69E2E"></div>Event</div>
     </div>
   </div>
 </div>
@@ -4331,8 +4342,30 @@ var ELEMENTS = [
       "parent": "aws_subnet.public_a",
       "type": "aws_instance",
       "category": "compute",
+      "changeType": "updated",
       "abbrev": "EC2",
       "isParent": false,
+      "threatSeverity": "high",
+      "threatCodes": [
+        "EC2001",
+        "EC2003"
+      ],
+      "threatFindings": [
+        {
+          "code": "EC2001",
+          "severity": "high",
+          "title": "IMDSv2 not enforced",
+          "detail": "Instance metadata service v1 is accessible — vulnerable to SSRF credential theft",
+          "remediation": "Set metadata_options { http_tokens = \"required\" } to enforce IMDSv2."
+        },
+        {
+          "code": "EC2003",
+          "severity": "info",
+          "title": "Detailed monitoring disabled",
+          "detail": "monitoring = false — only basic 5-minute CloudWatch metrics collected",
+          "remediation": "Set monitoring = true for 1-minute metric granularity."
+        }
+      ],
       "monthlyCost": 73.584,
       "driftStatus": "update",
       "driftChanges": [
@@ -4357,8 +4390,30 @@ var ELEMENTS = [
       "parent": "aws_subnet.private_a",
       "type": "aws_instance",
       "category": "compute",
+      "changeType": "added",
       "abbrev": "EC2",
-      "isParent": false
+      "isParent": false,
+      "threatSeverity": "high",
+      "threatCodes": [
+        "EC2001",
+        "EC2003"
+      ],
+      "threatFindings": [
+        {
+          "code": "EC2001",
+          "severity": "high",
+          "title": "IMDSv2 not enforced",
+          "detail": "Instance metadata service v1 is accessible — vulnerable to SSRF credential theft",
+          "remediation": "Set metadata_options { http_tokens = \"required\" } to enforce IMDSv2."
+        },
+        {
+          "code": "EC2003",
+          "severity": "info",
+          "title": "Detailed monitoring disabled",
+          "detail": "monitoring = false — only basic 5-minute CloudWatch metrics collected",
+          "remediation": "Set monitoring = true for 1-minute metric granularity."
+        }
+      ]
     }
   },
   {
@@ -4369,6 +4424,7 @@ var ELEMENTS = [
       "parent": "aws_vpc.main",
       "type": "aws_security_group",
       "category": "security",
+      "changeType": "updated",
       "abbrev": "SG",
       "isParent": false,
       "threatSeverity": "info",
@@ -4441,6 +4497,7 @@ var ELEMENTS = [
       "label": "postgres",
       "type": "aws_db_instance",
       "category": "storage",
+      "changeType": "added",
       "abbrev": "RDS",
       "isParent": false,
       "threatSeverity": "high",
@@ -4483,6 +4540,7 @@ var ELEMENTS = [
       "parent": "aws_subnet.private_a",
       "type": "aws_lambda_function",
       "category": "compute",
+      "changeType": "added",
       "abbrev": "λ",
       "isParent": false,
       "monthlyCost": 4.2
@@ -4519,7 +4577,20 @@ var ELEMENTS = [
       "label": "lambda_exec",
       "type": "aws_iam_role",
       "category": "security",
+      "changeType": "added",
       "abbrev": "IAM",
+      "isParent": false
+    }
+  },
+  {
+    "group": "nodes",
+    "data": {
+      "id": "aws_eks_cluster.main",
+      "label": "main",
+      "type": "aws_eks_cluster",
+      "category": "compute",
+      "changeType": "removed",
+      "abbrev": "EKS",
       "isParent": false
     }
   },
@@ -4528,7 +4599,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_subnet.public_a-\u003eaws_vpc.main",
       "source": "aws_subnet.public_a",
-      "target": "aws_vpc.main"
+      "target": "aws_vpc.main",
+      "label": "in VPC"
     }
   },
   {
@@ -4536,7 +4608,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_subnet.private_a-\u003eaws_vpc.main",
       "source": "aws_subnet.private_a",
-      "target": "aws_vpc.main"
+      "target": "aws_vpc.main",
+      "label": "in VPC"
     }
   },
   {
@@ -4544,7 +4617,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_internet_gateway.igw-\u003eaws_vpc.main",
       "source": "aws_internet_gateway.igw",
-      "target": "aws_vpc.main"
+      "target": "aws_vpc.main",
+      "label": "attached"
     }
   },
   {
@@ -4552,7 +4626,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_instance.web-\u003eaws_subnet.public_a",
       "source": "aws_instance.web",
-      "target": "aws_subnet.public_a"
+      "target": "aws_subnet.public_a",
+      "label": "in subnet"
     }
   },
   {
@@ -4560,7 +4635,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_instance.web-\u003eaws_security_group.web_sg",
       "source": "aws_instance.web",
-      "target": "aws_security_group.web_sg"
+      "target": "aws_security_group.web_sg",
+      "label": "attached"
     }
   },
   {
@@ -4568,7 +4644,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_instance.app-\u003eaws_subnet.private_a",
       "source": "aws_instance.app",
-      "target": "aws_subnet.private_a"
+      "target": "aws_subnet.private_a",
+      "label": "in subnet"
     }
   },
   {
@@ -4576,7 +4653,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_instance.app-\u003eaws_security_group.web_sg",
       "source": "aws_instance.app",
-      "target": "aws_security_group.web_sg"
+      "target": "aws_security_group.web_sg",
+      "label": "attached"
     }
   },
   {
@@ -4584,7 +4662,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_security_group.web_sg-\u003eaws_vpc.main",
       "source": "aws_security_group.web_sg",
-      "target": "aws_vpc.main"
+      "target": "aws_vpc.main",
+      "label": "in VPC"
     }
   },
   {
@@ -4592,7 +4671,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_db_instance.postgres-\u003eaws_subnet.private_a",
       "source": "aws_db_instance.postgres",
-      "target": "aws_subnet.private_a"
+      "target": "aws_subnet.private_a",
+      "label": "in subnet"
     }
   },
   {
@@ -4600,7 +4680,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_lambda_function.processor-\u003eaws_subnet.private_a",
       "source": "aws_lambda_function.processor",
-      "target": "aws_subnet.private_a"
+      "target": "aws_subnet.private_a",
+      "label": "in subnet"
     }
   },
   {
@@ -4608,7 +4689,8 @@ var ELEMENTS = [
     "data": {
       "id": "aws_lambda_function.processor-\u003eaws_iam_role.lambda_exec",
       "source": "aws_lambda_function.processor",
-      "target": "aws_iam_role.lambda_exec"
+      "target": "aws_iam_role.lambda_exec",
+      "label": "assumes"
     }
   },
   {
@@ -4616,7 +4698,19 @@ var ELEMENTS = [
     "data": {
       "id": "aws_lambda_function.processor-\u003eaws_sqs_queue.events",
       "source": "aws_lambda_function.processor",
-      "target": "aws_sqs_queue.events"
+      "target": "aws_sqs_queue.events",
+      "label": "triggered by"
+    }
+  },
+  {
+    "group": "edges",
+    "data": {
+      "id": "flow:aws_sqs_queue.events→aws_lambda_function.processor",
+      "source": "aws_sqs_queue.events",
+      "target": "aws_lambda_function.processor",
+      "label": "triggers",
+      "flow": true,
+      "flowKind": "event"
     }
   }
 ];
@@ -4674,11 +4768,35 @@ var cy = cytoscape({
         'source-distance-from-node': '8px',
         'target-distance-from-node': '8px',
         'opacity': 0.85,
+        'label': 'data(label)',
+        'font-size': '9px',
+        'font-family': "-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif",
+        'font-weight': '600',
+        'color': '#718096',
+        'text-background-color': '#F0F2F5',
+        'text-background-opacity': 0.9,
+        'text-background-padding': '2px',
+        'text-rotation': 'autorotate',
+        'text-margin-y': '-8px',
       }
     },
     {selector:'edge:selected',    style:{'line-color':'#0073BB','target-arrow-color':'#0073BB','width':'2px','opacity':'1'}},
+    {selector:'edge[?flow]',      style:{
+        'line-style':'dashed','line-dash-pattern':[6,3],
+        'line-color':'#38A169','target-arrow-color':'#38A169',
+        'width':'2px','opacity':0.9,'arrow-scale':0.8,
+        'label':'data(label)','font-size':'9px','font-weight':'700',
+        'color':'#276749','text-background-color':'#F0FFF4',
+        'text-background-opacity':0.95,'text-background-padding':'3px',
+        'text-rotation':'autorotate','text-margin-y':'-8px',
+    }},
+    {selector:'edge[flowKind="ingress"]', style:{'line-color':'#3182CE','target-arrow-color':'#3182CE','color':'#2B6CB0','text-background-color':'#EBF8FF'}},
+    {selector:'edge[flowKind="event"]',   style:{'line-color':'#D69E2E','target-arrow-color':'#D69E2E','color':'#975A16','text-background-color':'#FFFFF0'}},
+    {selector:'edge[flowKind="data"]',    style:{'line-color':'#38A169','target-arrow-color':'#38A169','color':'#276749','text-background-color':'#F0FFF4'}},
     {selector:'.faded',           style:{opacity:0.1}},
     {selector:'.edge-hl',         style:{'line-color':'#0073BB','target-arrow-color':'#0073BB',width:'2px',opacity:1}},
+    {selector:'.flow-hidden',     style:{display:'none'}},
+    {selector:'.dep-hidden',      style:{display:'none'}},
   ],
   layout: {
     name:'dagre', rankDir:'TB',
@@ -5024,6 +5142,34 @@ document.addEventListener('keydown',function(e){
   if(e.key==='/'){e.preventDefault(); document.getElementById('q').focus();}
   if(e.key==='?') toggleHelp();
 });
+
+// ── Flow view toggle ─────────────────────────────────────────────────────
+var hasFlow = ELEMENTS.some(function(el){ return el.group==='edges' && el.data.flow; });
+if(hasFlow){
+  document.getElementById('view-toggle').style.display='';
+  document.getElementById('view-sep').style.display='';
+  document.getElementById('flow-legend').style.display='';
+}
+
+var currentView = 'deps';
+window.setView = function(view){
+  currentView = view;
+  var btnDeps = document.getElementById('btn-deps');
+  var btnFlow = document.getElementById('btn-flow');
+  var btnBoth = document.getElementById('btn-both');
+  var active = 'background:#4A5568;color:#F7FAFC;border-color:#4A5568';
+  var inactive = '';
+  btnDeps.style.cssText = view==='deps' ? active : inactive;
+  btnFlow.style.cssText = view==='flow' ? active : inactive;
+  btnBoth.style.cssText = view==='both' ? active : inactive;
+
+  cy.edges().forEach(function(e){
+    var isFlow = e.data('flow');
+    e.removeClass('flow-hidden dep-hidden');
+    if(view==='deps' && isFlow) e.addClass('flow-hidden');
+    if(view==='flow' && !isFlow) e.addClass('dep-hidden');
+  });
+};
 
 // ── Panel resize ─────────────────────────────────────────────────────────
 (function(){

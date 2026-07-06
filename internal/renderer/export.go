@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	iofs "io/fs"
-	"strings"
+	"sort"
 	"text/template"
 
 	"github.com/hack-monk/tf-lens/internal/graph"
@@ -45,11 +45,9 @@ func ExportThreats(w io.Writer, g *graph.Graph) error {
 
 	// Sort by severity weight (critical first)
 	sevWeight := map[string]int{"critical": 4, "high": 3, "medium": 2, "info": 1}
-	for i := 1; i < len(findings); i++ {
-		for j := i; j > 0 && sevWeight[findings[j].Severity] > sevWeight[findings[j-1].Severity]; j-- {
-			findings[j], findings[j-1] = findings[j-1], findings[j]
-		}
-	}
+	sort.Slice(findings, func(i, j int) bool {
+		return sevWeight[findings[i].Severity] > sevWeight[findings[j].Severity]
+	})
 
 	total := len(findings)
 	sevIcon := map[string]string{"critical": "🔴", "high": "🟠", "medium": "🟡", "info": "🔵"}
@@ -91,7 +89,7 @@ func ExportThreats(w io.Writer, g *graph.Graph) error {
 // ExportJSON writes the graph as a JSON document for programmatic consumption.
 // Includes summary statistics for threats, costs, drift, and diff.
 func ExportJSON(w io.Writer, g *graph.Graph) error {
-	elements := buildElements(g)
+	elements := graph.BuildElements(g)
 
 	// Build summary stats
 	threatCounts := map[string]int{"critical": 0, "high": 0, "medium": 0, "info": 0}
@@ -118,10 +116,10 @@ func ExportJSON(w io.Writer, g *graph.Graph) error {
 	}
 
 	resp := struct {
-		Elements  []element `json:"elements"`
-		NodeCount int       `json:"nodeCount"`
-		EdgeCount int       `json:"edgeCount"`
-		Summary   *jsonSummary `json:"summary,omitempty"`
+		Elements  []graph.Element `json:"elements"`
+		NodeCount int             `json:"nodeCount"`
+		EdgeCount int             `json:"edgeCount"`
+		Summary   *jsonSummary    `json:"summary,omitempty"`
 	}{
 		Elements:  elements,
 		NodeCount: len(g.Nodes),
@@ -195,7 +193,7 @@ type jsonDiffSummary struct {
 }
 
 func ExportHTML(w io.Writer, g *graph.Graph, resolver *icons.Resolver) error {
-	elements := buildElements(g)
+	elements := graph.BuildElements(g)
 	elemJSON, err := json.MarshalIndent(elements, "", "  ")
 	if err != nil {
 		return fmt.Errorf("serialising elements: %w", err)
@@ -234,167 +232,6 @@ func loadBundledJS() (string, bool) {
 }
 
 // ── Abbreviations ────────────────────────────────────────────────────────────
-
-var abbrevMap = map[string]string{
-	"aws_vpc": "VPC", "aws_subnet": "SN", "aws_internet_gateway": "IGW",
-	"aws_nat_gateway": "NAT", "aws_alb": "ALB", "aws_lb": "ALB",
-	"aws_route53_zone": "R53", "aws_instance": "EC2", "aws_lambda_function": "λ",
-	"aws_ecs_service": "ECS", "aws_eks_cluster": "EKS", "aws_autoscaling_group": "ASG",
-	"aws_cloudfront_distribution": "CF", "aws_s3_bucket": "S3", "aws_db_instance": "RDS",
-	"aws_dynamodb_table": "DDB", "aws_elasticache_cluster": "EC", "aws_ebs_volume": "EBS",
-	"aws_efs_file_system": "EFS", "aws_security_group": "SG", "aws_iam_role": "IAM",
-	"aws_kms_key": "KMS", "aws_secretsmanager_secret": "SM", "aws_sns_topic": "SNS",
-	"aws_sqs_queue": "SQS", "aws_api_gateway_rest_api": "API", "aws_cloudwatch_log_group": "CW",
-	"aws_rds_cluster": "RDS", "aws_ecr_repository": "ECR", "aws_redshift_cluster": "RS",
-	"aws_opensearch_domain": "OS", "aws_elasticsearch_domain": "ES",
-	"aws_ecs_task_definition": "ECS", "aws_ecs_cluster": "ECS",
-	"aws_api_gateway_stage": "API", "aws_apigatewayv2_api": "API", "aws_apigatewayv2_stage": "API",
-	"aws_cloudtrail": "CT", "aws_launch_template": "LT", "aws_kinesis_stream": "KDS",
-	"aws_msk_cluster": "MSK", "aws_docdb_cluster": "DOC", "aws_neptune_cluster": "NEP",
-	"aws_codebuild_project": "CB",
-	"module": "MOD",
-}
-
-func abbrev(t string) string {
-	if a, ok := abbrevMap[t]; ok {
-		return a
-	}
-	p := strings.Split(t, "_")
-	last := p[len(p)-1]
-	if len(last) > 3 {
-		last = last[:3]
-	}
-	return strings.ToUpper(last)
-}
-
-func toFindingData(nf []graph.NodeFinding) []findingData {
-	if len(nf) == 0 {
-		return nil
-	}
-	out := make([]findingData, len(nf))
-	for i, f := range nf {
-		out[i] = findingData{
-			Code:        f.Code,
-			Severity:    f.Severity,
-			Title:       f.Title,
-			Detail:      f.Detail,
-			Remediation: f.Remediation,
-		}
-	}
-	return out
-}
-
-func toDriftChangeData(dc []graph.NodeDriftChange) []driftChangeData {
-	if len(dc) == 0 {
-		return nil
-	}
-	out := make([]driftChangeData, len(dc))
-	for i, c := range dc {
-		out[i] = driftChangeData{Path: c.Path, Expected: c.Expected, Actual: c.Actual}
-	}
-	return out
-}
-
-// ── Elements ─────────────────────────────────────────────────────────────────
-
-type nodeData struct {
-	ID              string   `json:"id"`
-	Label           string   `json:"label"`
-	Parent          string   `json:"parent,omitempty"`
-	Type            string   `json:"type"`
-	Category        string   `json:"category"`
-	ChangeType      string   `json:"changeType,omitempty"`
-	Abbrev          string   `json:"abbrev"`
-	IsParent        bool     `json:"isParent"`
-	ThreatSeverity  string           `json:"threatSeverity,omitempty"`
-	ThreatCodes     []string         `json:"threatCodes,omitempty"`
-	ThreatFindings  []findingData    `json:"threatFindings,omitempty"`
-	MonthlyCost     float64          `json:"monthlyCost,omitempty"`
-	DriftStatus     string           `json:"driftStatus,omitempty"`
-	DriftChanges    []driftChangeData `json:"driftChanges,omitempty"`
-}
-
-type driftChangeData struct {
-	Path     string `json:"path"`
-	Expected string `json:"expected"`
-	Actual   string `json:"actual"`
-}
-
-type findingData struct {
-	Code        string `json:"code"`
-	Severity    string `json:"severity"`
-	Title       string `json:"title"`
-	Detail      string `json:"detail"`
-	Remediation string `json:"remediation"`
-}
-
-type edgeData struct {
-	ID     string `json:"id"`
-	Source string `json:"source"`
-	Target string `json:"target"`
-	Label  string `json:"label,omitempty"`
-	Flow   bool   `json:"flow,omitempty"`
-	Kind   string `json:"flowKind,omitempty"`
-}
-
-type element struct {
-	Group string      `json:"group"`
-	Data  interface{} `json:"data"`
-}
-
-func buildElements(g *graph.Graph) []element {
-	parentIDs := map[string]bool{}
-	for _, n := range g.Nodes {
-		if n.ParentID != "" {
-			parentIDs[n.ParentID] = true
-		}
-	}
-
-	var elems []element
-	for _, n := range g.Nodes {
-		elems = append(elems, element{
-			Group: "nodes",
-			Data: nodeData{
-				ID: n.ID, Label: n.Name, Parent: n.ParentID,
-				Type: n.Type, Category: string(n.Category),
-				ChangeType: string(n.ChangeType),
-				Abbrev:          abbrev(n.Type),
-				IsParent:         parentIDs[n.ID],
-				ThreatSeverity:   n.ThreatMaxSeverity,
-				ThreatCodes:      n.ThreatCodes,
-				ThreatFindings:   toFindingData(n.ThreatFindings),
-				MonthlyCost:      n.MonthlyCost,
-				DriftStatus:      n.DriftStatus,
-				DriftChanges:     toDriftChangeData(n.DriftChanges),
-			},
-		})
-	}
-
-	nodeIDs := map[string]bool{}
-	for _, n := range g.Nodes {
-		nodeIDs[n.ID] = true
-	}
-	for _, e := range g.Edges {
-		if nodeIDs[e.Source] && nodeIDs[e.Target] {
-			elems = append(elems, element{
-				Group: "edges",
-				Data:  edgeData{ID: e.ID, Source: e.Source, Target: e.Target, Label: e.Label},
-			})
-		}
-	}
-
-	// Flow edges (runtime traffic paths)
-	for _, f := range g.FlowEdges {
-		if nodeIDs[f.Source] && nodeIDs[f.Target] {
-			elems = append(elems, element{
-				Group: "edges",
-				Data:  edgeData{ID: f.ID, Source: f.Source, Target: f.Target, Label: f.Label, Flow: true, Kind: f.Kind},
-			})
-		}
-	}
-
-	return elems
-}
 
 // ── Template ─────────────────────────────────────────────────────────────────
 
