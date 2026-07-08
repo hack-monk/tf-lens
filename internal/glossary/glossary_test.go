@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/hack-monk/tf-lens/internal/glossary"
+	"github.com/hack-monk/tf-lens/internal/graph"
 )
 
 func TestLookup_KnownType(t *testing.T) {
@@ -27,6 +28,41 @@ func TestLookup_UnknownType(t *testing.T) {
 	_, ok := glossary.Lookup("aws_unknown_thing")
 	if ok {
 		t.Error("expected ok=false for unknown type")
+	}
+}
+
+func TestAnnotateGraph(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: []*graph.Node{
+			{ID: "aws_sqs_queue.orders", Type: "aws_sqs_queue"},
+			{ID: "aws_instance.web", Type: "aws_instance"},
+			{ID: "aws_unknown_resource.foo", Type: "aws_unknown_resource"},
+		},
+	}
+	glossary.AnnotateGraph(g)
+
+	var sqs, ec2, unknown *graph.Node
+	for _, n := range g.Nodes {
+		switch n.ID {
+		case "aws_sqs_queue.orders":
+			sqs = n
+		case "aws_instance.web":
+			ec2 = n
+		case "aws_unknown_resource.foo":
+			unknown = n
+		}
+	}
+	if sqs.GlossaryName != "Amazon SQS" {
+		t.Errorf("SQS GlossaryName = %q", sqs.GlossaryName)
+	}
+	if sqs.GlossaryOneLiner == "" {
+		t.Error("SQS GlossaryOneLiner must not be empty")
+	}
+	if ec2.GlossaryName != "Amazon EC2 Instance" {
+		t.Errorf("EC2 GlossaryName = %q", ec2.GlossaryName)
+	}
+	if unknown.GlossaryName != "" {
+		t.Errorf("unknown type should have empty GlossaryName, got %q", unknown.GlossaryName)
 	}
 }
 

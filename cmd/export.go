@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/hack-monk/tf-lens/internal/annotations"
 	"github.com/hack-monk/tf-lens/internal/cost"
 	"github.com/hack-monk/tf-lens/internal/diff"
 	"github.com/hack-monk/tf-lens/internal/drift"
 	"github.com/hack-monk/tf-lens/internal/flow"
+	"github.com/hack-monk/tf-lens/internal/glossary"
 	"github.com/hack-monk/tf-lens/internal/graph"
 	"github.com/hack-monk/tf-lens/internal/icons"
 	"github.com/hack-monk/tf-lens/internal/parser"
@@ -25,8 +27,9 @@ var (
 	exportThreat  bool
 	exportCost    string
 	exportDrift   string
-	exportFormat  string
-	exportFlow    bool
+	exportFormat      string
+	exportFlow        bool
+	exportAnnotations string
 )
 
 var exportCmd = &cobra.Command{
@@ -141,6 +144,20 @@ Examples:
 			fmt.Printf("🔀  Flow: %d traffic paths inferred\n", len(flows))
 		}
 
+		// ── 7b. Glossary annotation (always runs) ────────────────────────────
+		glossary.AnnotateGraph(g)
+
+		// ── 7c. Human annotations (optional) ────────────────────────────────
+		if exportAnnotations != "" {
+			af, err := annotations.Parse(exportAnnotations)
+			if err != nil {
+				return fmt.Errorf("parsing annotations: %w", err)
+			}
+			annotations.Apply(g, af)
+			fmt.Printf("📝  Annotations: %d resources annotated, %d tour steps\n",
+				len(af.Annotations), len(af.Tour))
+		}
+
 		// ── 8. Write output ───────────────────────────────────────────────────
 		switch exportFormat {
 		case "json":
@@ -213,6 +230,8 @@ func init() {
 		"Output format: html (default), json, or threats")
 	exportCmd.Flags().BoolVar(&exportFlow, "flow", false,
 		"Infer and overlay runtime traffic/data flow paths")
+	exportCmd.Flags().StringVar(&exportAnnotations, "annotations", "",
+		"Path to tf-lens.yaml annotation file with human-readable labels and tour steps")
 }
 
 // resolveCosts handles the --cost flag: if the path is a JSON file, parse it

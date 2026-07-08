@@ -8,10 +8,12 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/hack-monk/tf-lens/internal/annotations"
 	"github.com/hack-monk/tf-lens/internal/cost"
 	"github.com/hack-monk/tf-lens/internal/diff"
 	"github.com/hack-monk/tf-lens/internal/drift"
 	"github.com/hack-monk/tf-lens/internal/flow"
+	"github.com/hack-monk/tf-lens/internal/glossary"
 	"github.com/hack-monk/tf-lens/internal/graph"
 	"github.com/hack-monk/tf-lens/internal/icons"
 	"github.com/hack-monk/tf-lens/internal/server"
@@ -28,8 +30,9 @@ var (
 	serveThreat    bool
 	serveCost      string
 	serveDriftPath string
-	serveWatch     bool
-	serveFlow      bool
+	serveWatch       bool
+	serveFlow        bool
+	serveAnnotations string
 )
 
 var serveCmd = &cobra.Command{
@@ -96,6 +99,8 @@ func init() {
 		"Watch input files for changes and auto-reload the diagram")
 	serveCmd.Flags().BoolVar(&serveFlow, "flow", false,
 		"Infer and overlay runtime traffic/data flow paths")
+	serveCmd.Flags().StringVar(&serveAnnotations, "annotations", "",
+		"Path to tf-lens.yaml annotation file with human-readable labels and tour steps")
 }
 
 // buildServeGraph runs the full pipeline: parse → build → diff → threat → cost → drift.
@@ -161,6 +166,17 @@ func buildServeGraph() (*graph.Graph, error) {
 		fmt.Printf("🔀  Flow: %d traffic paths inferred\n", len(flows))
 	}
 
+	glossary.AnnotateGraph(g)
+	if serveAnnotations != "" {
+		af, err := annotations.Parse(serveAnnotations)
+		if err != nil {
+			return nil, fmt.Errorf("parsing annotations: %w", err)
+		}
+		annotations.Apply(g, af)
+		fmt.Printf("📝  Annotations: %d resources annotated, %d tour steps\n",
+			len(af.Annotations), len(af.Tour))
+	}
+
 	return g, nil
 }
 
@@ -175,6 +191,9 @@ func collectWatchPaths() []string {
 	}
 	if serveDiff != "" {
 		paths = append(paths, serveDiff)
+	}
+	if serveAnnotations != "" {
+		paths = append(paths, serveAnnotations)
 	}
 	return paths
 }
