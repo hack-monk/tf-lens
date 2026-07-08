@@ -261,6 +261,16 @@ const htmlSrc = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TF-Lens</title>
 <style>
+:root{
+  --bg-body:#F0F2F5;--bg-bar:#232F3E;--bg-panel:#FFFFFF;--bg-card:#FFFFFF;
+  --text-primary:#1A202C;--text-secondary:#4A5568;--text-muted:#718096;
+  --border:#E2E8F0;--sb-bg:rgba(255,255,255,0.85);
+}
+body.dark{
+  --bg-body:#0D1117;--bg-bar:#161B22;--bg-panel:#161B22;--bg-card:#1C2128;
+  --text-primary:#E6EDF3;--text-secondary:#8B949E;--text-muted:#6E7681;
+  --border:#30363D;--sb-bg:rgba(22,27,34,0.9);
+}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
 /* ── Thin custom scrollbar ── */
@@ -272,9 +282,10 @@ const htmlSrc = `<!DOCTYPE html>
 
 body{
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
-  background:#F0F2F5;
+  background:var(--bg-body);
   display:flex;flex-direction:column;height:100vh;overflow:hidden;
-  color:#1A202C;
+  color:var(--text-primary);
+  transition:background .2s,color .2s;
 }
 
 /* ── Toolbar ── */
@@ -284,6 +295,26 @@ body{
   background:#232F3E;border-bottom:3px solid #FF9900;
   flex-shrink:0;z-index:100;
 }
+#dashboard{
+  display:flex;align-items:center;gap:8px;padding:6px 16px;
+  background:var(--bg-bar);border-bottom:1px solid #2D3748;
+  flex-shrink:0;flex-wrap:wrap;
+}
+.dp{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 10px;border-radius:12px;
+  background:#2D3748;color:#E2E8F0;
+  font-size:11px;font-weight:600;cursor:pointer;
+  border:1px solid #4A5568;
+  transition:background .15s;
+}
+.dp:hover{background:#4A5568}
+#dark-toggle{
+  margin-left:auto;padding:4px 10px;
+  background:transparent;border:1px solid #4A5568;
+  border-radius:6px;color:#A0AEC0;cursor:pointer;font-size:12px;
+}
+#dark-toggle:hover{background:#2D3748;color:#E2E8F0}
 #logo{
   display:flex;align-items:center;gap:7px;
   font-size:15px;font-weight:700;color:#F7FAFC;
@@ -619,7 +650,10 @@ body{
       <div class="li"><div class="ld" style="background:#D69E2E"></div>Event</div>
     </div>
   </div>
+  <button id="dark-toggle" onclick="doToggleDark()" title="Toggle dark mode">☀</button>
 </div>
+
+<div id="dashboard"></div>
 
 <div id="cy"></div>
 
@@ -697,6 +731,22 @@ var CAT={
 
 var ELEMENTS = {{.Elements}};
 var TOUR_STEPS = {{.TourStepsJSON}};
+
+// ── Dark mode ────────────────────────────────────────────────────────────
+(function(){
+  var saved = localStorage.getItem('tflens-dark');
+  if(saved === '1') document.body.classList.add('dark');
+})();
+window.doToggleDark = function(){
+  var on = document.body.classList.toggle('dark');
+  localStorage.setItem('tflens-dark', on ? '1' : '0');
+  var btn = document.getElementById('dark-toggle');
+  if(btn) btn.textContent = on ? '🌙' : '☀';
+};
+(function(){
+  var btn = document.getElementById('dark-toggle');
+  if(btn) btn.textContent = document.body.classList.contains('dark') ? '🌙' : '☀';
+})();
 
 // ── Cytoscape styles: layout geometry only, no visuals on leaf nodes ──────
 var cy = cytoscape({
@@ -868,6 +918,71 @@ function renderContainerLabels(){
 cy.on('render', renderContainerLabels);
 cy.on('pan zoom', renderContainerLabels);
 renderContainerLabels();
+
+// ── Summary dashboard ────────────────────────────────────────────────────
+(function(){
+  var dash = document.getElementById('dashboard');
+  if(!dash) return;
+
+  var leafCount = cy.nodes().filter(function(n){ return !n.isParent(); }).length;
+  var modCount  = cy.nodes().filter(function(n){ return n.data('type')==='module'; }).length;
+
+  function pill(icon, text, onclick){
+    var d = document.createElement('div');
+    d.className = 'dp';
+    d.innerHTML = icon + ' ' + text;
+    if(onclick) d.onclick = onclick;
+    return d;
+  }
+
+  dash.appendChild(pill('📦', leafCount + ' Resources'));
+
+  if(modCount > 0){
+    dash.appendChild(pill('🧩', modCount + ' Modules'));
+  }
+
+  // Threat pill
+  var tc = {critical:0, high:0, medium:0};
+  cy.nodes().forEach(function(n){
+    var s = n.data('threatSeverity');
+    if(s && tc[s] !== undefined) tc[s]++;
+  });
+  var totalThreats = tc.critical + tc.high + tc.medium;
+  if(totalThreats > 0){
+    var parts = [];
+    if(tc.critical) parts.push('🔴'+tc.critical);
+    if(tc.high)     parts.push('🟠'+tc.high);
+    if(tc.medium)   parts.push('🟡'+tc.medium);
+    dash.appendChild(pill('⚠', parts.join(' ') + ' Threats', function(){
+      cy.nodes().forEach(function(n){ if(!n.data('threatSeverity')) n.addClass('faded'); else n.removeClass('faded'); });
+      cy.edges().forEach(function(e){ e.addClass('faded'); });
+    }));
+  }
+
+  // Cost pill
+  var totalCostDash = 0;
+  cy.nodes().forEach(function(n){ totalCostDash += (n.data('monthlyCost')||0); });
+  if(totalCostDash > 0){
+    dash.appendChild(pill('💰', fmtCost(totalCostDash)+'/mo', function(){
+      var costNodes = [];
+      cy.nodes().forEach(function(n){ if(n.data('monthlyCost')>0 && !n.isParent()) costNodes.push(n); });
+      costNodes.sort(function(a,b){ return b.data('monthlyCost')-a.data('monthlyCost'); });
+      cy.nodes().addClass('faded');
+      costNodes.forEach(function(n){ n.removeClass('faded'); });
+      cy.edges().addClass('faded');
+    }));
+  }
+
+  // Drift pill
+  var driftCountDash = 0;
+  cy.nodes().forEach(function(n){ if(n.data('driftStatus')) driftCountDash++; });
+  if(driftCountDash > 0){
+    dash.appendChild(pill('⚡', driftCountDash + ' Drifted', function(){
+      cy.nodes().forEach(function(n){ if(!n.data('driftStatus')) n.addClass('faded'); else n.removeClass('faded'); });
+      cy.edges().addClass('faded');
+    }));
+  }
+})();
 
 // ── Statusbar ────────────────────────────────────────────────────────────
 var lc = cy.nodes().filter(function(n){ return !n.isParent(); }).length;

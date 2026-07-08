@@ -33,6 +33,18 @@ func TestExportHTML_TourStepsEmbedded(t *testing.T) {
 	}
 }
 
+func TestExportHTML_DarkModeElements(t *testing.T) {
+	g := &graph.Graph{Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}}}
+	var buf bytes.Buffer
+	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	html := buf.String()
+	for _, want := range []string{"id=\"dark-toggle\"", "--bg-body", "id=\"dashboard\"", "doToggleDark"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("HTML missing: %s", want)
+		}
+	}
+}
+
 func TestExportHTML_EmptyTourSteps(t *testing.T) {
 	g := &graph.Graph{
 		Nodes: []*graph.Node{
