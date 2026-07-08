@@ -315,6 +315,24 @@ body{
   border-radius:6px;color:#A0AEC0;cursor:pointer;font-size:12px;
 }
 #dark-toggle:hover{background:#2D3748;color:#E2E8F0}
+#minimap{
+  position:absolute;bottom:44px;right:12px;
+  width:180px;height:110px;
+  background:var(--bg-panel);border:1px solid var(--border);
+  border-radius:6px;overflow:hidden;z-index:50;
+  box-shadow:0 2px 8px rgba(0,0,0,.15);
+}
+#minimap canvas{width:100%;height:100%}
+#minimap-vp{
+  position:absolute;border:2px solid #FF9900;border-radius:2px;
+  pointer-events:none;
+}
+#minimap-toggle{
+  position:absolute;bottom:44px;right:200px;
+  background:var(--sb-bg);border:1px solid var(--border);
+  border-radius:6px;padding:3px 7px;font-size:11px;
+  cursor:pointer;z-index:51;color:var(--text-secondary);
+}
 #logo{
   display:flex;align-items:center;gap:7px;
   font-size:15px;font-weight:700;color:#F7FAFC;
@@ -655,7 +673,12 @@ body{
 
 <div id="dashboard"></div>
 
-<div id="cy"></div>
+<div id="cy" style="position:relative"></div>
+<button id="minimap-toggle" onclick="toggleMinimap()" title="M">⊞ Map</button>
+<div id="minimap" style="display:none">
+  <canvas id="minimap-canvas"></canvas>
+  <div id="minimap-vp"></div>
+</div>
 
 <div id="sb">
   <div class="sp" id="sc"></div>
@@ -694,6 +717,7 @@ body{
     <div class="krow"><span class="kdesc">Clear selection & search</span><span class="kkey">Esc</span></div>
     <div class="krow"><span class="kdesc">Focus search box</span><span class="kkey">/</span></div>
     <div class="krow"><span class="kdesc">Show this help</span><span class="kkey">?</span></div>
+    <div class="krow"><span class="kdesc">Toggle minimap</span><span class="kkey">M</span></div>
   </div>
 </div>
 
@@ -1294,6 +1318,65 @@ window.setView = function(view){
     panel.style.transition = '';
   });
 })();
+
+// ── Minimap ──────────────────────────────────────────────────────────────
+var minimapVisible = false;
+window.toggleMinimap = function(){
+  minimapVisible = !minimapVisible;
+  document.getElementById('minimap').style.display = minimapVisible ? '' : 'none';
+  if(minimapVisible) initMinimap();
+};
+
+function initMinimap(){ drawMinimap(); }
+function drawMinimap(){
+  var canvas = document.getElementById('minimap-canvas');
+  if(!canvas) return;
+  var mm = document.getElementById('minimap');
+  canvas.width  = mm.offsetWidth;
+  canvas.height = mm.offsetHeight;
+  var ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  var bb = cy.elements().boundingBox();
+  if(!bb || bb.w === 0 || bb.h === 0) return;
+
+  var scaleX = canvas.width  / bb.w;
+  var scaleY = canvas.height / bb.h;
+  var scale  = Math.min(scaleX, scaleY) * 0.9;
+  var offX   = (canvas.width  - bb.w * scale) / 2;
+  var offY   = (canvas.height - bb.h * scale) / 2;
+
+  cy.nodes().forEach(function(n){
+    if(n.isParent()) return;
+    var nbb = n.boundingBox();
+    var x = (nbb.x1 - bb.x1) * scale + offX;
+    var y = (nbb.y1 - bb.y1) * scale + offY;
+    var w = nbb.w * scale;
+    var h = nbb.h * scale;
+    var cat = n.data('category') || 'unknown';
+    var colors = {networking:'#147EBA',compute:'#ED7100',storage:'#3F8624',security:'#DD344C',messaging:'#8C4FFF',unknown:'#A0AEC0'};
+    ctx.fillStyle = colors[cat] || '#A0AEC0';
+    ctx.fillRect(x, y, Math.max(w, 3), Math.max(h, 3));
+  });
+
+  var ext = cy.extent();
+  var vpx = (ext.x1 - bb.x1) * scale + offX;
+  var vpy = (ext.y1 - bb.y1) * scale + offY;
+  var vpw = ext.w * scale;
+  var vph = ext.h * scale;
+  var vp = document.getElementById('minimap-vp');
+  vp.style.left   = Math.max(0, vpx) + 'px';
+  vp.style.top    = Math.max(0, vpy) + 'px';
+  vp.style.width  = Math.min(vpw, canvas.width)  + 'px';
+  vp.style.height = Math.min(vph, canvas.height) + 'px';
+}
+
+cy.on('pan zoom', function(){ if(minimapVisible) initMinimap(); });
+
+document.addEventListener('keydown', function(e){
+  if(e.target.matches('input')) return;
+  if(e.key === 'm' || e.key === 'M') toggleMinimap();
+});
 
 })();
 </script>

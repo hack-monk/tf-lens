@@ -45,6 +45,18 @@ func TestExportHTML_DarkModeElements(t *testing.T) {
 	}
 }
 
+func TestExportHTML_MinimapElements(t *testing.T) {
+	g := &graph.Graph{Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}}}
+	var buf bytes.Buffer
+	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	html := buf.String()
+	for _, want := range []string{"id=\"minimap\"", "id=\"minimap-vp\"", "initMinimap", "M"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("HTML missing minimap element: %s", want)
+		}
+	}
+}
+
 func TestExportHTML_EmptyTourSteps(t *testing.T) {
 	g := &graph.Graph{
 		Nodes: []*graph.Node{
