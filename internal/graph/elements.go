@@ -60,8 +60,16 @@ type NodeData struct {
 	ThreatCodes    []string      `json:"threatCodes,omitempty"`
 	ThreatFindings []FindingData `json:"threatFindings,omitempty"`
 	MonthlyCost    float64       `json:"monthlyCost,omitempty"`
-	DriftStatus    string        `json:"driftStatus,omitempty"`
+	DriftStatus    string            `json:"driftStatus,omitempty"`
 	DriftChanges   []DriftChangeData `json:"driftChanges,omitempty"`
+	// Context / annotation fields
+	HumanLabel       string `json:"humanLabel,omitempty"`
+	Description      string `json:"description,omitempty"`
+	DocsURL          string `json:"docsURL,omitempty"`
+	Owner            string `json:"owner,omitempty"`
+	Environment      string `json:"environment,omitempty"`
+	GlossaryName     string `json:"glossaryName,omitempty"`
+	GlossaryOneLiner string `json:"glossaryOneLiner,omitempty"`
 }
 
 // EdgeData is the data payload for an edge Element.
@@ -116,8 +124,15 @@ func BuildElements(g *Graph) []Element {
 				ThreatCodes:    n.ThreatCodes,
 				ThreatFindings: toFindingData(n.ThreatFindings),
 				MonthlyCost:    n.MonthlyCost,
-				DriftStatus:    n.DriftStatus,
-				DriftChanges:   toDriftChangeData(n.DriftChanges),
+				DriftStatus:      n.DriftStatus,
+				DriftChanges:     toDriftChangeData(n.DriftChanges),
+				HumanLabel:       n.HumanLabel,
+				Description:      n.Description,
+				DocsURL:          n.DocsURL,
+				Owner:            n.Owner,
+				Environment:      n.Environment,
+				GlossaryName:     n.GlossaryName,
+				GlossaryOneLiner: n.GlossaryOneLiner,
 			},
 		})
 	}

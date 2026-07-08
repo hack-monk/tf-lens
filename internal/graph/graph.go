@@ -71,6 +71,14 @@ type Node struct {
 	// Drift fields — populated by drift.AnnotateGraph()
 	DriftStatus  string            // "update", "delete", "create", or "" (no drift)
 	DriftChanges []NodeDriftChange // Per-attribute changes
+	// Context fields — populated by graph.Build (auto-inference) and annotations.Apply (overrides)
+	HumanLabel       string // Human-friendly display name, e.g. "Order Processing Queue"
+	Description      string // What this resource does and why it exists
+	DocsURL          string // Link to wiki, runbook, or AWS docs
+	Owner            string // Team or person responsible, from tags.Team/Owner or annotation
+	Environment      string // e.g. "prod", "staging" — from tags.Environment
+	GlossaryName     string // AWS service name, e.g. "Amazon SQS" — from glossary package
+	GlossaryOneLiner string // One-sentence AWS service explanation — from glossary package
 }
 
 // Edge represents a dependency between two nodes.
@@ -90,11 +98,20 @@ type FlowEdge struct {
 	Kind   string // "ingress", "data", "event", "internal"
 }
 
+// TourStep is one step in a guided onboarding tour of the infrastructure.
+type TourStep struct {
+	Step      int    // 1-based step number
+	Resource  string // Terraform resource address, e.g. "aws_alb.main"
+	Title     string // Short step title
+	Narration string // Explanation shown to the new joiner
+}
+
 // Graph is the complete node/edge model passed to the renderer.
 type Graph struct {
 	Nodes     []*Node
 	Edges     []*Edge
-	FlowEdges []*FlowEdge // populated by flow.AnnotateGraph()
+	FlowEdges []*FlowEdge  // populated by flow.AnnotateGraph()
+	TourSteps []TourStep   // Guided tour steps — populated by annotations.Apply()
 }
 
 // Build creates a Graph from a slice of parsed resources.

@@ -244,3 +244,40 @@ func TestBuild_EmptyInput(t *testing.T) {
 		t.Errorf("expected 0 nodes, got %d", len(g.Nodes))
 	}
 }
+
+func TestBuildElements_AnnotationFields(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: []*graph.Node{
+			{
+				ID:               "aws_sqs_queue.orders",
+				Type:             "aws_sqs_queue",
+				Name:             "orders",
+				Category:         graph.CategoryMessaging,
+				HumanLabel:       "Order Queue",
+				Description:      "Handles order events.",
+				DocsURL:          "https://wiki.example.com",
+				Owner:            "payments-team",
+				Environment:      "prod",
+				GlossaryName:     "Amazon SQS",
+				GlossaryOneLiner: "Fully managed message queue.",
+			},
+		},
+	}
+	elems := graph.BuildElements(g)
+	if len(elems) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(elems))
+	}
+	nd, ok := elems[0].Data.(graph.NodeData)
+	if !ok {
+		t.Fatal("element data is not NodeData")
+	}
+	if nd.HumanLabel != "Order Queue" {
+		t.Errorf("HumanLabel = %q", nd.HumanLabel)
+	}
+	if nd.GlossaryName != "Amazon SQS" {
+		t.Errorf("GlossaryName = %q", nd.GlossaryName)
+	}
+	if nd.Owner != "payments-team" {
+		t.Errorf("Owner = %q", nd.Owner)
+	}
+}
