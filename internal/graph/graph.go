@@ -134,6 +134,33 @@ func Build(resources []parser.Resource) *Graph {
 			Tags:       r.Tags,
 			Module:     r.Module,
 		}
+
+		// Auto-infer context from tags (zero-config — no annotation file needed)
+		if v := r.Tags["Name"]; v != "" {
+			n.HumanLabel = v
+		}
+		if v := r.Tags["Description"]; v != "" {
+			n.Description = v
+		}
+		// Check attrs["description"] as fallback (used by IAM roles, security groups)
+		if n.Description == "" {
+			if v, ok := r.Attributes["description"]; ok {
+				if s, ok := v.(string); ok && s != "" {
+					n.Description = s
+				}
+			}
+		}
+		if v := r.Tags["Team"]; v != "" {
+			n.Owner = v
+		} else if v := r.Tags["Owner"]; v != "" {
+			n.Owner = v
+		}
+		if v := r.Tags["Environment"]; v != "" {
+			n.Environment = v
+		} else if v := r.Tags["Env"]; v != "" {
+			n.Environment = v
+		}
+
 		g.Nodes = append(g.Nodes, n)
 		nodeIndex[n.ID] = n
 	}

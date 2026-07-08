@@ -245,6 +245,63 @@ func TestBuild_EmptyInput(t *testing.T) {
 	}
 }
 
+func TestBuild_AutoInference(t *testing.T) {
+	resources := []parser.Resource{
+		{
+			Address:  "aws_sqs_queue.orders",
+			Type:     "aws_sqs_queue",
+			Name:     "orders",
+			Provider: "aws",
+			Tags: map[string]string{
+				"Name":        "Order Processing Queue",
+				"Description": "Handles order events",
+				"Team":        "payments-team",
+				"Environment": "prod",
+			},
+			Attributes: map[string]any{},
+		},
+		{
+			Address:  "aws_iam_role.exec",
+			Type:     "aws_iam_role",
+			Name:     "exec",
+			Provider: "aws",
+			Tags:     map[string]string{},
+			Attributes: map[string]any{
+				"description": "Execution role for Lambda functions",
+			},
+		},
+	}
+	g := graph.Build(resources)
+
+	var qNode, iamNode *graph.Node
+	for _, n := range g.Nodes {
+		if n.ID == "aws_sqs_queue.orders" {
+			qNode = n
+		}
+		if n.ID == "aws_iam_role.exec" {
+			iamNode = n
+		}
+	}
+	if qNode == nil {
+		t.Fatal("queue node not found")
+	}
+	if qNode.HumanLabel != "Order Processing Queue" {
+		t.Errorf("HumanLabel = %q, want %q", qNode.HumanLabel, "Order Processing Queue")
+	}
+	if qNode.Owner != "payments-team" {
+		t.Errorf("Owner = %q, want %q", qNode.Owner, "payments-team")
+	}
+	if qNode.Environment != "prod" {
+		t.Errorf("Environment = %q, want %q", qNode.Environment, "prod")
+	}
+	if iamNode == nil {
+		t.Fatal("iam node not found")
+	}
+	if iamNode.Description != "Execution role for Lambda functions" {
+		t.Errorf("Description = %q", iamNode.Description)
+	}
+}
+
 func TestBuildElements_AnnotationFields(t *testing.T) {
 	g := &graph.Graph{
 		Nodes: []*graph.Node{
