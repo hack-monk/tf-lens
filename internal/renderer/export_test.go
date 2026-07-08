@@ -1,0 +1,52 @@
+package renderer_test
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"github.com/hack-monk/tf-lens/internal/graph"
+	"github.com/hack-monk/tf-lens/internal/icons"
+	"github.com/hack-monk/tf-lens/internal/renderer"
+)
+
+func TestExportHTML_TourStepsEmbedded(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: []*graph.Node{
+			{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking},
+		},
+		TourSteps: []graph.TourStep{
+			{Step: 1, Resource: "aws_alb.main", Title: "Entry Point", Narration: "Traffic enters here."},
+		},
+	}
+	var buf bytes.Buffer
+	resolver := icons.NewResolver("")
+	if err := renderer.ExportHTML(&buf, g, resolver); err != nil {
+		t.Fatalf("ExportHTML error: %v", err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, `"Entry Point"`) {
+		t.Error("HTML does not contain tour step title")
+	}
+	if !strings.Contains(html, `"aws_alb.main"`) {
+		t.Error("HTML does not contain tour step resource")
+	}
+}
+
+func TestExportHTML_EmptyTourSteps(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: []*graph.Node{
+			{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking},
+		},
+	}
+	var buf bytes.Buffer
+	resolver := icons.NewResolver("")
+	if err := renderer.ExportHTML(&buf, g, resolver); err != nil {
+		t.Fatalf("ExportHTML error: %v", err)
+	}
+	html := buf.String()
+	// Should contain empty tour steps JSON
+	if !strings.Contains(html, `var TOUR_STEPS = []`) {
+		t.Error("HTML should contain empty TOUR_STEPS array")
+	}
+}

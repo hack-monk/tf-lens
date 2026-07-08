@@ -198,11 +198,21 @@ func ExportHTML(w io.Writer, g *graph.Graph, resolver *icons.Resolver) error {
 	if err != nil {
 		return fmt.Errorf("serialising elements: %w", err)
 	}
+
+	tourJSON, err := json.Marshal(g.TourSteps)
+	if err != nil {
+		return fmt.Errorf("serialising tour steps: %w", err)
+	}
+	if g.TourSteps == nil {
+		tourJSON = []byte("[]")
+	}
+
 	inlineJS, offline := loadBundledJS()
 	return htmlTemplate.Execute(w, templateData{
-		Elements: string(elemJSON),
-		Offline:  offline,
-		InlineJS: inlineJS,
+		Elements:      string(elemJSON),
+		Offline:       offline,
+		InlineJS:      inlineJS,
+		TourStepsJSON: string(tourJSON),
 	})
 }
 
@@ -236,9 +246,10 @@ func loadBundledJS() (string, bool) {
 // ── Template ─────────────────────────────────────────────────────────────────
 
 type templateData struct {
-	Elements string
-	Offline  bool
-	InlineJS string
+	Elements      string
+	Offline       bool
+	InlineJS      string
+	TourStepsJSON string // JSON array of tour steps; "[]" when none
 }
 
 var htmlTemplate = template.Must(template.New("d").Parse(htmlSrc))
@@ -685,6 +696,7 @@ var CAT={
 };
 
 var ELEMENTS = {{.Elements}};
+var TOUR_STEPS = {{.TourStepsJSON}};
 
 // ── Cytoscape styles: layout geometry only, no visuals on leaf nodes ──────
 var cy = cytoscape({
