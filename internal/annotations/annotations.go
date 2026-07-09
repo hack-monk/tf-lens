@@ -1,6 +1,5 @@
-// Package graph builds the node/edge model from parsed Terraform resources.
-// It applies AWS-aware grouping logic (VPC → Subnet → AZ → Instance)
-// and assigns categories for colour coding.
+// Package annotations parses tf-lens.yaml annotation files and applies
+// human-readable labels, descriptions, owners, and guided tour steps to a graph.
 package annotations
 
 import (

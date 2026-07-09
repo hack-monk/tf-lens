@@ -1245,7 +1245,7 @@ window.openPanel = function(d){
       h += '<div class="pa"><div class="pk">Environment</div>'
          + '<div class="pv"><span style="background:#276749;color:#C6F6D5;padding:1px 8px;border-radius:10px;font-size:11px">'+d.environment+'</span></div></div>';
     }
-    if(d.docsURL){
+    if(d.docsURL && /^https?:\/\//.test(d.docsURL)){
       h += '<div class="pa"><div class="pk">Docs</div>'
          + '<div class="pv"><a href="'+d.docsURL+'" target="_blank" rel="noopener" style="color:#3182CE;font-size:12px;word-break:break-all">'+d.docsURL+'</a></div></div>';
     }
@@ -1328,11 +1328,11 @@ window.closePanel = function(){
 };
 
 // ── Search with filter syntax ─────────────────────────────────────────────
-// Supported: type: tag: module: threat: owner:
+// Supported: type: module: threat: owner:
 function parseFilters(raw){
   var filters = [];
   var rest = raw;
-  var re = /(type|tag|module|threat|owner):([^\s]+)/g;
+  var re = /(type|module|threat|owner):([^\s]+)/g;
   var m;
   while((m = re.exec(raw)) !== null){
     filters.push({key: m[1], val: m[2].toLowerCase()});
@@ -1358,11 +1358,6 @@ function matchesFilters(n, text, filters){
     if(f.key==='module'  && !(n.id()||'').toLowerCase().includes('module.'+f.val)) return false;
     if(f.key==='threat'  && (n.data('threatSeverity')||'').toLowerCase() !== f.val) return false;
     if(f.key==='owner'   && (n.data('owner')||'').toLowerCase() !== f.val) return false;
-    if(f.key==='tag'){
-      var kv = f.val.split('=');
-      // tag filtering requires humanLabel/description check (tags not in NodeData — use owner/env as proxy)
-      // basic: check if type or label contains tag key
-    }
   }
   return true;
 }
