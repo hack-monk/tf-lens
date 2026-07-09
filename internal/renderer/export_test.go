@@ -81,6 +81,23 @@ func TestExportHTML_CollapsibleModules(t *testing.T) {
 	}
 }
 
+func TestExportHTML_GuidedTour(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}},
+		TourSteps: []graph.TourStep{
+			{Step: 1, Resource: "aws_alb.main", Title: "Entry Point", Narration: "Traffic enters here."},
+		},
+	}
+	var buf bytes.Buffer
+	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	html := buf.String()
+	for _, want := range []string{"id=\"tour-overlay\"", "startTour", "nextTourStep", "Start Tour"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("HTML missing tour element: %s", want)
+		}
+	}
+}
+
 func TestExportHTML_EmptyTourSteps(t *testing.T) {
 	g := &graph.Graph{
 		Nodes: []*graph.Node{

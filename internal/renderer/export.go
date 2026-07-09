@@ -345,6 +345,36 @@ body{
   border-radius:6px;padding:3px 7px;font-size:11px;
   cursor:pointer;z-index:51;color:var(--text-secondary);
 }
+#tour-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);
+  z-index:200;display:none;align-items:flex-end;justify-content:center;
+  padding-bottom:80px;
+}
+#tour-overlay.active{display:flex}
+#tour-card{
+  background:var(--bg-panel);border-radius:12px;padding:24px;
+  max-width:440px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.4);
+  position:relative;
+}
+#tour-step-num{
+  font-size:10px;font-weight:700;color:var(--text-muted);
+  letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px;
+}
+#tour-title{font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:10px}
+#tour-narration{font-size:13px;line-height:1.6;color:var(--text-secondary);margin-bottom:20px}
+#tour-controls{display:flex;gap:8px;justify-content:flex-end}
+.tour-btn{
+  padding:6px 16px;border-radius:6px;border:none;cursor:pointer;
+  font-size:12px;font-weight:600;
+}
+#tour-prev{background:var(--border);color:var(--text-primary)}
+#tour-next{background:#FF9900;color:#FFF}
+#tour-exit{
+  position:absolute;top:12px;right:14px;
+  background:none;border:none;cursor:pointer;
+  font-size:18px;color:var(--text-muted);
+}
+#tour-start-btn{display:none}
 #logo{
   display:flex;align-items:center;gap:7px;
   font-size:15px;font-weight:700;color:#F7FAFC;
@@ -680,6 +710,7 @@ body{
       <div class="li"><div class="ld" style="background:#D69E2E"></div>Event</div>
     </div>
   </div>
+  <button id="tour-start-btn" class="btn" onclick="startTour()" style="display:none;background:#FF9900;color:#1A202C;font-weight:700">&#x25B6; Start Tour</button>
   <button id="dark-toggle" onclick="doToggleDark()" title="Toggle dark mode">☀</button>
 </div>
 
@@ -719,6 +750,19 @@ body{
     <button id="phx" onclick="closePanel()" title="Esc">×</button>
   </div>
   <div id="pb"></div>
+</div>
+
+<div id="tour-overlay">
+  <div id="tour-card">
+    <button id="tour-exit" onclick="exitTour()">&#xD7;</button>
+    <div id="tour-step-num"></div>
+    <div id="tour-title"></div>
+    <div id="tour-narration"></div>
+    <div id="tour-controls">
+      <button class="tour-btn" id="tour-prev" onclick="prevTourStep()">&#x2190; Prev</button>
+      <button class="tour-btn" id="tour-next" onclick="nextTourStep()">Next &#x2192;</button>
+    </div>
+  </div>
 </div>
 
 <div id="khelp" onclick="if(event.target===this)toggleHelp()">
@@ -1478,6 +1522,72 @@ document.addEventListener('keydown', function(e){
   if(e.target.matches('input')) return;
   if(e.key === 'm' || e.key === 'M') toggleMinimap();
 });
+
+// ── Guided Tour ──────────────────────────────────────────────────────────
+(function(){
+  var steps = TOUR_STEPS || [];
+  var cur = 0;
+
+  if(steps.length > 0){
+    var btn = document.getElementById('tour-start-btn');
+    if(btn) btn.style.display = '';
+  }
+
+  function updateHash(){
+    if(cur >= 0 && cur < steps.length){
+      history.replaceState(null,'','#tour='+(cur+1));
+    }
+  }
+
+  function showStep(idx){
+    if(idx < 0 || idx >= steps.length) return;
+    cur = idx;
+    var s = steps[idx];
+    document.getElementById('tour-step-num').textContent = 'Step '+(idx+1)+' of '+steps.length;
+    document.getElementById('tour-title').textContent = s.Title || s.title || '';
+    document.getElementById('tour-narration').textContent = s.Narration || s.narration || '';
+    document.getElementById('tour-prev').style.visibility = idx === 0 ? 'hidden' : '';
+    document.getElementById('tour-next').textContent = idx === steps.length-1 ? 'Finish' : 'Next \u2192';
+
+    var resource = s.Resource || s.resource;
+    cy.elements().removeClass('faded tour-spotlight');
+    var target = cy.getElementById(resource);
+    if(target && target.length){
+      cy.nodes().forEach(function(n){ if(n.id()!==resource) n.addClass('faded'); });
+      cy.edges().addClass('faded');
+      cy.animate({fit:{eles:target.closedNeighborhood(), padding:80}}, {duration:400});
+    }
+    updateHash();
+  }
+
+  window.startTour = function(){
+    if(!steps.length) return;
+    document.getElementById('tour-overlay').classList.add('active');
+    var m = location.hash.match(/#tour=(\d+)/);
+    var startIdx = m ? Math.max(0, Math.min(parseInt(m[1],10)-1, steps.length-1)) : 0;
+    showStep(startIdx);
+  };
+
+  window.exitTour = function(){
+    document.getElementById('tour-overlay').classList.remove('active');
+    cy.elements().removeClass('faded tour-spotlight');
+    history.replaceState(null,'','#');
+  };
+
+  window.nextTourStep = function(){
+    if(cur >= steps.length-1){ exitTour(); return; }
+    showStep(cur+1);
+  };
+
+  window.prevTourStep = function(){
+    if(cur > 0) showStep(cur-1);
+  };
+
+  var initM = location.hash.match(/#tour=(\d+)/);
+  if(initM && steps.length > 0){
+    setTimeout(function(){ window.startTour(); }, 600);
+  }
+})();
 
 })();
 </script>
