@@ -226,6 +226,7 @@ func loadBundledJS() (string, bool) {
 		"dagre.min.js",
 		"cytoscape-dagre.min.js",
 		"cytoscape-node-html-label.min.js",
+		"cytoscape-expand-collapse.min.js",
 	}
 	var combined []byte
 	for _, f := range files {
@@ -740,6 +741,7 @@ body{
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/cytoscape-node-html-label@1.2.1/dist/cytoscape-node-html-label.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-expand-collapse@4.1.0/cytoscape-expand-collapse.min.js"></script>
 {{end}}
 
 <script>
@@ -910,6 +912,31 @@ if(typeof cy.nodeHtmlLabel === 'function'){
     }
   }]);
 }
+
+// ── Expand-collapse extension ─────────────────────────────────────────────
+var ecApi = null;
+if(typeof cy.expandCollapse === 'function'){
+  ecApi = cy.expandCollapse({
+    layoutBy: {name:'dagre',rankDir:'TB',nodeSep:50,rankSep:80},
+    fisheye: false,
+    animate: true,
+    animationDuration: 200,
+    undoable: false,
+  });
+}
+
+// Double-click on a module/parent node to collapse/expand
+cy.on('dblclick', 'node', function(evt){
+  var n = evt.target;
+  if(!n.isParent() || !ecApi) return;
+  if(n.data('collapsed')){
+    ecApi.expand(n);
+    n.data('collapsed', false);
+  } else {
+    ecApi.collapse(n);
+    n.data('collapsed', true);
+  }
+});
 
 // ── Container labels rendered as absolutely-positioned HTML overlays ──────
 // This approach places the label ON the border line rather than inside,

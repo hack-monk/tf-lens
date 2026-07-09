@@ -69,6 +69,18 @@ func TestExportHTML_SearchFilters(t *testing.T) {
 	}
 }
 
+func TestExportHTML_CollapsibleModules(t *testing.T) {
+	g := &graph.Graph{Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}}}
+	var buf bytes.Buffer
+	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	html := buf.String()
+	for _, want := range []string{"expandCollapse", "cytoscape-expand-collapse", "dblclick"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("HTML missing collapsible modules element: %s", want)
+		}
+	}
+}
+
 func TestExportHTML_EmptyTourSteps(t *testing.T) {
 	g := &graph.Graph{
 		Nodes: []*graph.Node{

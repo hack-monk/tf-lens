@@ -9,12 +9,14 @@ CYTOSCAPE_VERSION   := 3.28.1
 DAGRE_VERSION       := 0.8.5
 CYTODAGRE_VERSION   := 2.5.0
 HTMLLABEL_VERSION   := 1.2.1
+EXPANDCOLLAPSE_VERSION := 4.1.0
 
 BUNDLE_DIR     := internal/renderer/js
 CYTO_JS        := $(BUNDLE_DIR)/cytoscape.min.js
 DAGRE_JS       := $(BUNDLE_DIR)/dagre.min.js
 CYTODAGRE_JS   := $(BUNDLE_DIR)/cytoscape-dagre.min.js
 HTMLLABEL_JS   := $(BUNDLE_DIR)/cytoscape-node-html-label.min.js
+EXPANDCOLLAPSE_JS := $(BUNDLE_DIR)/cytoscape-expand-collapse.min.js
 
 .PHONY: all build bundle bundle-check test test-ci lint \
         build-linux build-darwin build-darwin-amd64 build-windows build-all \
@@ -44,6 +46,8 @@ bundle:
 	@curl -fsSL "https://cdn.jsdelivr.net/npm/cytoscape-dagre@$(CYTODAGRE_VERSION)/cytoscape-dagre.min.js" -o $(CYTODAGRE_JS)
 	@echo "→ Downloading cytoscape-node-html-label $(HTMLLABEL_VERSION)..."
 	@curl -fsSL "https://cdn.jsdelivr.net/npm/cytoscape-node-html-label@$(HTMLLABEL_VERSION)/dist/cytoscape-node-html-label.min.js" -o $(HTMLLABEL_JS)
+	@echo "→ Downloading cytoscape-expand-collapse $(EXPANDCOLLAPSE_VERSION)..."
+	@curl -fsSL "https://cdn.jsdelivr.net/npm/cytoscape-expand-collapse@$(EXPANDCOLLAPSE_VERSION)/cytoscape-expand-collapse.min.js" -o $(EXPANDCOLLAPSE_JS)
 	@echo ""
 	@echo "✅ JS bundles ready ($(BUNDLE_DIR)/):"
 	@ls -lh $(BUNDLE_DIR)/*.js | awk '{print "   " $$5 "  " $$9}'
