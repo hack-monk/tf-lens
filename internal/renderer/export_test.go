@@ -98,6 +98,31 @@ func TestExportHTML_GuidedTour(t *testing.T) {
 	}
 }
 
+func TestExportHTML_ContextPanel(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: []*graph.Node{
+			{
+				ID: "aws_sqs_queue.orders", Type: "aws_sqs_queue", Name: "orders",
+				Category:         graph.CategoryMessaging,
+				HumanLabel:       "Order Processing Queue",
+				Description:      "Handles order events.",
+				DocsURL:          "https://wiki.example.com",
+				Owner:            "payments-team",
+				GlossaryName:     "Amazon SQS",
+				GlossaryOneLiner: "Fully managed message queue.",
+			},
+		},
+	}
+	var buf bytes.Buffer
+	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	html := buf.String()
+	for _, want := range []string{"humanLabel", "glossaryName", "glossaryOneLiner", "docsURL", "owner"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("HTML missing panel field: %s", want)
+		}
+	}
+}
+
 func TestExportHTML_EmptyTourSteps(t *testing.T) {
 	g := &graph.Graph{
 		Nodes: []*graph.Node{

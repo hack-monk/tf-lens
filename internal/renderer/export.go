@@ -1226,6 +1226,45 @@ window.openPanel = function(d){
        + '<div class="pv"><span class="cb '+(cc[d.changeType]||'')+'">'+
          (ci[d.changeType]||'')+' '+d.changeType.toUpperCase()+'</span></div></div>';
   }
+  // ── Human context section ─────────────────────────────────────────────
+  if(d.humanLabel || d.description || d.owner || d.docsURL){
+    h += '<div class="pd"></div>';
+    if(d.humanLabel){
+      h += '<div class="pa"><div class="pk">Name</div>'
+         + '<div class="pv" style="font-weight:700;font-size:14px;color:var(--text-primary)">'+d.humanLabel+'</div></div>';
+    }
+    if(d.description){
+      h += '<div class="pa" style="align-items:flex-start"><div class="pk">What it does</div>'
+         + '<div class="pv" style="line-height:1.5;color:var(--text-secondary)">'+d.description+'</div></div>';
+    }
+    if(d.owner){
+      h += '<div class="pa"><div class="pk">Owner</div>'
+         + '<div class="pv"><span style="background:#2D3748;color:#E2E8F0;padding:1px 8px;border-radius:10px;font-size:11px">'+d.owner+'</span></div></div>';
+    }
+    if(d.environment){
+      h += '<div class="pa"><div class="pk">Environment</div>'
+         + '<div class="pv"><span style="background:#276749;color:#C6F6D5;padding:1px 8px;border-radius:10px;font-size:11px">'+d.environment+'</span></div></div>';
+    }
+    if(d.docsURL){
+      h += '<div class="pa"><div class="pk">Docs</div>'
+         + '<div class="pv"><a href="'+d.docsURL+'" target="_blank" rel="noopener" style="color:#3182CE;font-size:12px;word-break:break-all">'+d.docsURL+'</a></div></div>';
+    }
+  }
+
+  // ── AWS Service glossary ──────────────────────────────────────────────
+  if(d.glossaryName || d.glossaryOneLiner){
+    h += '<div class="pd"></div>';
+    h += '<div class="pa" style="align-items:flex-start"><div class="pk" style="color:var(--text-muted)">About this service</div>';
+    h += '<div style="margin-top:4px">';
+    if(d.glossaryName){
+      h += '<div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:4px">'+d.glossaryName+'</div>';
+    }
+    if(d.glossaryOneLiner){
+      h += '<div style="font-size:11px;color:var(--text-secondary);line-height:1.5">'+d.glossaryOneLiner+'</div>';
+    }
+    h += '</div></div>';
+  }
+
   h += '<div class="pd"></div>';
   h += '<div class="pa"><div class="pk">Address</div><div class="pv"><span class="pc">'+d.id+'</span></div></div>';
   h += '<div class="pa"><div class="pk">Type</div><div class="pv"><span class="pc">'+d.type+'</span></div></div>';
