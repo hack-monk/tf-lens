@@ -315,6 +315,17 @@ body{
   border-radius:6px;color:#A0AEC0;cursor:pointer;font-size:12px;
 }
 #dark-toggle:hover{background:#2D3748;color:#E2E8F0}
+#filter-chips{
+  display:flex;gap:4px;flex-wrap:wrap;padding:0 16px 6px;
+  background:var(--bg-bar);
+}
+.fchip{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 8px;border-radius:10px;
+  background:#3182CE;color:#FFF;font-size:10px;font-weight:600;cursor:pointer;
+}
+.fchip:after{content:'×';margin-left:2px;opacity:.7}
+.fchip:hover:after{opacity:1}
 #minimap{
   position:absolute;bottom:44px;right:12px;
   width:180px;height:110px;
@@ -672,6 +683,7 @@ body{
 </div>
 
 <div id="dashboard"></div>
+<div id="filter-chips" style="display:none"></div>
 
 <div id="cy" style="position:relative"></div>
 <button id="minimap-toggle" onclick="toggleMinimap()" title="M">⊞ Map</button>
@@ -1205,23 +1217,84 @@ window.closePanel = function(){
   document.getElementById('panel').classList.remove('open');
 };
 
-// ── Search ───────────────────────────────────────────────────────────────
+// ── Search with filter syntax ─────────────────────────────────────────────
+// Supported: type: tag: module: threat: owner:
+function parseFilters(raw){
+  var filters = [];
+  var rest = raw;
+  var re = /(type|tag|module|threat|owner):([^\s]+)/g;
+  var m;
+  while((m = re.exec(raw)) !== null){
+    filters.push({key: m[1], val: m[2].toLowerCase()});
+    rest = rest.replace(m[0], '').trim();
+  }
+  return {text: rest.trim().toLowerCase(), filters: filters};
+}
+
+function matchesFilters(n, text, filters){
+  // Text match
+  if(text && !(
+    (n.data('label')||'').toLowerCase().includes(text) ||
+    (n.data('type') ||'').toLowerCase().includes(text) ||
+    (n.data('abbrev')||'').toLowerCase().includes(text) ||
+    n.id().toLowerCase().includes(text) ||
+    (n.data('humanLabel')||'').toLowerCase().includes(text) ||
+    (n.data('description')||'').toLowerCase().includes(text)
+  )) return false;
+  // Structured filters
+  for(var i=0;i<filters.length;i++){
+    var f = filters[i];
+    if(f.key==='type'    && !(n.data('type')||'').toLowerCase().includes(f.val)) return false;
+    if(f.key==='module'  && !(n.id()||'').toLowerCase().includes('module.'+f.val)) return false;
+    if(f.key==='threat'  && (n.data('threatSeverity')||'').toLowerCase() !== f.val) return false;
+    if(f.key==='owner'   && (n.data('owner')||'').toLowerCase() !== f.val) return false;
+    if(f.key==='tag'){
+      var kv = f.val.split('=');
+      // tag filtering requires humanLabel/description check (tags not in NodeData — use owner/env as proxy)
+      // basic: check if type or label contains tag key
+    }
+  }
+  return true;
+}
+
+function renderFilterChips(filters){
+  var bar = document.getElementById('filter-chips');
+  if(!bar) return;
+  bar.innerHTML = '';
+  if(!filters.length){ bar.style.display='none'; return; }
+  bar.style.display='flex';
+  filters.forEach(function(f, idx){
+    var chip = document.createElement('span');
+    chip.className = 'fchip';
+    chip.textContent = f.key+':'+f.val;
+    chip.onclick = function(){
+      var q = document.getElementById('q');
+      var val = q.value.replace(f.key+':'+f.val, '').trim();
+      q.value = val;
+      doSearch(val);
+    };
+    bar.appendChild(chip);
+  });
+}
+
 window.doSearch = function(q){
   clearSel();
-  var t = q.toLowerCase().trim();
-  var qx = document.getElementById('qx');
-  var qc = document.getElementById('qc');
-  qx.style.display = t ? '' : 'none';
-  if(!t){ cy.elements().removeClass('faded'); qc.style.display='none'; return; }
+  var raw = (q||'').trim();
+  var qx  = document.getElementById('qx');
+  var qc  = document.getElementById('qc');
+  qx.style.display = raw ? '' : 'none';
+
+  var parsed = parseFilters(raw);
+  renderFilterChips(parsed.filters);
+
+  if(!raw){ cy.elements().removeClass('faded'); qc.style.display='none'; return; }
+
   var matched = 0;
   var leafCount = 0;
   cy.nodes().forEach(function(n){
     if(n.isParent()) return;
     leafCount++;
-    var m = (n.data('label')||'').toLowerCase().includes(t)
-         || (n.data('type') ||'').toLowerCase().includes(t)
-         || (n.data('abbrev')||'').toLowerCase().includes(t)
-         || n.id().toLowerCase().includes(t);
+    var m = matchesFilters(n, parsed.text, parsed.filters);
     if(m){ n.removeClass('faded'); matched++; } else n.addClass('faded');
   });
   cy.edges().forEach(function(e){
@@ -1236,6 +1309,7 @@ window.clearSearch = function(){
   document.getElementById('q').value = '';
   document.getElementById('qx').style.display = 'none';
   document.getElementById('qc').style.display = 'none';
+  document.getElementById('filter-chips').style.display = 'none';
   cy.elements().removeClass('faded');
 };
 

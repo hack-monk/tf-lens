@@ -57,6 +57,18 @@ func TestExportHTML_MinimapElements(t *testing.T) {
 	}
 }
 
+func TestExportHTML_SearchFilters(t *testing.T) {
+	g := &graph.Graph{Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}}}
+	var buf bytes.Buffer
+	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	html := buf.String()
+	for _, want := range []string{"id=\"filter-chips\"", "parseFilters", "type:", "owner:"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("HTML missing search filter element: %s", want)
+		}
+	}
+}
+
 func TestExportHTML_EmptyTourSteps(t *testing.T) {
 	g := &graph.Graph{
 		Nodes: []*graph.Node{
