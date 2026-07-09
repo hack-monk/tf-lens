@@ -57,7 +57,7 @@ bundle:
 ## bundle-check: Verify all JS bundles are present
 bundle-check:
 	@missing=0; \
-	for f in $(CYTO_JS) $(DAGRE_JS) $(CYTODAGRE_JS) $(HTMLLABEL_JS); do \
+	for f in $(CYTO_JS) $(DAGRE_JS) $(CYTODAGRE_JS) $(HTMLLABEL_JS) $(EXPANDCOLLAPSE_JS); do \
 	  if [ ! -f "$$f" ]; then echo "❌ Missing: $$f"; missing=1; fi; \
 	done; \
 	if [ $$missing -eq 0 ]; then echo "✅ All JS bundles present"; fi; \
