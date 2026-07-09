@@ -26,6 +26,7 @@ TF-Lens parses Terraform plan and state files and renders them as clean, interac
 | No free security overlay for Terraform | Threat modelling: SG exposure, unencrypted storage, public RDS, IAM wildcards |
 | Cost visibility requires separate tooling | Infracost-powered cost overlay — per-resource and total monthly estimates |
 | Manual cloud changes go unnoticed | State drift detection — compare live AWS state against Terraform |
+| New joiners can't understand the infra diagram | Annotation layer: human labels, descriptions, owners, guided tour |
 
 ---
 
@@ -47,11 +48,23 @@ TF-Lens parses Terraform plan and state files and renders them as clean, interac
 
 **Watch mode** — `tf-lens serve --watch` auto-reloads the diagram when input files change, with SSE-powered browser refresh
 
-**Module grouping** — Terraform modules rendered as compound container nodes, with proper nesting for nested modules
+**Module grouping** — Terraform modules rendered as compound container nodes, with proper nesting for nested modules; double-click to collapse/expand
 
 **Export formats** — `--format html` (default), `--format json` (machine-readable), `--format threats` (Markdown security report)
 
 **AWS-style diagram** — category-coloured cards, dashed VPC/subnet containers with labels on the border line, right-angle edge routing
+
+**Dark mode** — toggle between light and dark themes; preference persisted in localStorage
+
+**Summary dashboard** — resource count, module count, and overlay pills (threat severity, cost total, drift count) shown above the diagram
+
+**Minimap** — canvas-based 180×120 px overview with viewport indicator; toggle with **M**
+
+**Extended search** — filter by `type:`, `module:`, `threat:`, `owner:` with removable chip UI; plain text matches resource ID, human label, and description
+
+**Guided tour** — annotated walkthroughs with step overlay, resource spotlight, and URL hash deep-link (`#tour=1`)
+
+**Context detail panel** — clicking any node shows human-readable name, description, owner, docs link, and AWS service glossary entry
 
 ---
 
@@ -117,6 +130,7 @@ tf-lens export [flags]
   --cost        Cost overlay: Infracost JSON file, or Terraform dir to auto-run infracost
   --drift       Drift detection: refresh-only plan JSON, or Terraform dir to auto-run
   --flow        Infer and overlay runtime traffic/data flow paths
+  --annotations Path to tf-lens.yaml annotation file (human labels, tour steps)
   --format      Output format: html (default), json, or threats
   --icon-dir    Directory with custom SVG icons (optional)
 ```
@@ -134,9 +148,76 @@ tf-lens serve [flags]
   --cost        Cost overlay: Infracost JSON file, or Terraform dir to auto-run infracost
   --drift       Drift detection: refresh-only plan JSON, or Terraform dir to auto-run
   --flow        Infer and overlay runtime traffic/data flow paths
+  --annotations Path to tf-lens.yaml annotation file (reloaded automatically with --watch)
   --watch       Watch input files for changes and auto-reload diagram
   --no-open     Don't open browser automatically
 ```
+
+---
+
+## Annotations & Onboarding
+
+TF-Lens is built for teams. Use a `tf-lens.yaml` annotation file to add human-readable context to any resource, and create guided tours for new joiners.
+
+### Auto-inference (zero config)
+
+TF-Lens automatically reads standard Terraform tags:
+
+| Tag | Panel field |
+|---|---|
+| `tags.Name` | Human label (shown in bold above resource ID) |
+| `tags.Description` / `attributes.description` | What it does |
+| `tags.Team` / `tags.Owner` | Owner badge |
+| `tags.Environment` / `tags.Env` | Environment badge |
+
+No annotation file needed — anything tagged in Terraform appears in the panel automatically.
+
+### tf-lens.yaml
+
+Override or extend auto-inferred values, and add guided tour steps:
+
+```yaml
+annotations:
+  - resource: aws_alb.main
+    label: "Production Load Balancer"
+    description: "Entry point for all external traffic. Routes /api/* to the API service and /* to the frontend."
+    docs: "https://wiki.example.com/infra/load-balancer"
+    owner: "platform-team"
+
+  - resource: aws_db_instance.primary
+    label: "Orders Database"
+    description: "Primary RDS Postgres instance. Read replica in us-east-1b."
+    owner: "backend-team"
+
+tour:
+  - step: 1
+    resource: aws_alb.main
+    title: "Entry Point"
+    narration: "All external traffic enters through this Application Load Balancer."
+  - step: 2
+    resource: aws_db_instance.primary
+    title: "Orders Database"
+    narration: "The ALB routes API requests to ECS tasks, which read/write here."
+```
+
+```bash
+tf-lens export --plan plan.json --annotations tf-lens.yaml --out diagram.html
+tf-lens serve  --plan plan.json --annotations tf-lens.yaml --watch
+```
+
+### AWS Service Glossary
+
+TF-Lens ships a built-in glossary of 40+ AWS resource types. Clicking any node shows a "About this service" section with the service name and a one-liner — no annotation file required.
+
+### Guided Tour
+
+When `tour:` steps are defined, a **▶ Start Tour** button appears in the toolbar. Each step:
+- Shows a card with title and narration
+- Spotlights the target resource (dims everything else)
+- Pans and zooms to the resource automatically
+- Updates the URL hash (`#tour=1`) for deep-linking
+
+Share `diagram.html#tour=1` and the recipient opens directly to step 1.
 
 ---
 
@@ -365,6 +446,8 @@ tf-lens/
 │   ├── cost/          # Infracost integration — parse JSON or auto-run CLI
 │   ├── drift/         # State drift detection — refresh-only plan comparison
 │   ├── flow/          # Runtime traffic/data flow inference engine
+│   ├── glossary/      # Built-in AWS service catalog (40+ types, one-liners)
+│   ├── annotations/   # tf-lens.yaml parsing and graph annotation
 │   ├── icons/         # SVG resolver (user dir → embed → prefix → fallback)
 │   ├── renderer/      # HTML/JSON/Markdown export with Cytoscape.js
 │   └── server/        # HTTP server with SSE live reload for serve mode
@@ -405,6 +488,16 @@ Two-mode design:
 - [x] Export formats: HTML, JSON, Markdown threat report
 - [x] Edge label inference (61 contextual dependency labels)
 - [x] GitHub Actions / GitLab CI templates
+- [x] Dark mode with localStorage persistence
+- [x] Summary dashboard (resource/module/overlay pills)
+- [x] Canvas minimap with viewport indicator (M key)
+- [x] Extended search: `type:`, `module:`, `threat:`, `owner:` filters with chip UI
+- [x] Collapsible module groups (double-click to expand/collapse)
+- [x] Built-in AWS service glossary (40+ resource types)
+- [x] Auto-inference of human labels, descriptions, owners from Terraform tags
+- [x] `--annotations` flag with `tf-lens.yaml` annotation file support
+- [x] Guided tour mode: step overlay, resource spotlight, `#tour=N` URL hash deep-link
+- [x] Context detail panel: human label, description, owner, docs link, glossary entry
 
 **Up next**
 - [ ] Azure support (community contribution path)
