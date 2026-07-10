@@ -121,6 +121,26 @@ func TestExportHTML_ContextPanel(t *testing.T) {
 	}
 }
 
+func TestServeHTML_ServeOnlyMarkersAndFetchWiring(t *testing.T) {
+	var buf bytes.Buffer
+	if err := renderer.ServeHTML(&buf); err != nil {
+		t.Fatalf("ServeHTML error: %v", err)
+	}
+	html := buf.String()
+	for _, want := range []string{
+		"live-dot", "btn-refresh", "id=\"loading\"", "function refreshGraph",
+		"__setTourSteps",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("ServeHTML missing: %s", want)
+		}
+	}
+	// Export-mode-only markers must not leak into serve mode.
+	if strings.Contains(html, "buildDiagram([") {
+		t.Error("ServeHTML should not bake element data into the page — serve mode fetches it")
+	}
+}
+
 func TestExportHTML_EmptyTourSteps(t *testing.T) {
 	g := &graph.Graph{
 		Nodes: []*graph.Node{

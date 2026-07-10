@@ -28,3 +28,4 @@ internal/renderer/js/*.js
 
 # ── GoReleaser ────────────────────────────────────────────────────────────────
 dist/
+.gstack/

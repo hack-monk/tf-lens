@@ -121,6 +121,7 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	elements := s.elements
 	nodeCount := len(s.g.Nodes)
 	edgeCount := len(s.g.Edges)
+	tourSteps := s.g.TourSteps
 	s.mu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -131,6 +132,7 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		Elements:  elements,
 		NodeCount: nodeCount,
 		EdgeCount: edgeCount,
+		TourSteps: tourSteps,
 	}
 
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
@@ -186,7 +188,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // ── JSON response types ──────────────────────────────────────────────────────
 
 type graphResponse struct {
-	Elements  []graph.Element `json:"elements"`
-	NodeCount int             `json:"nodeCount"`
-	EdgeCount int             `json:"edgeCount"`
+	Elements  []graph.Element  `json:"elements"`
+	NodeCount int              `json:"nodeCount"`
+	EdgeCount int              `json:"edgeCount"`
+	TourSteps []graph.TourStep `json:"tourSteps"`
 }

@@ -1686,6 +1686,18 @@ document.addEventListener('keydown', function(e){
     if(cur > 0) showStep(cur-1);
   };
 
+  // Serve mode loads steps asynchronously (page ships with none baked in);
+  // refreshGraph() calls this once /api/graph responds with tourSteps.
+  window.__setTourSteps = function(newSteps){
+    var wasEmpty = steps.length === 0;
+    steps = newSteps || [];
+    var btn = document.getElementById('tour-start-btn');
+    if(btn) btn.style.display = steps.length > 0 ? '' : 'none';
+    if(wasEmpty && steps.length > 0 && location.hash.match(/#tour=(\d+)/)){
+      setTimeout(function(){ window.startTour(); }, 100);
+    }
+  };
+
   var initM = location.hash.match(/#tour=(\d+)/);
   if(initM && steps.length > 0){
     setTimeout(function(){ window.startTour(); }, 600);
@@ -1706,6 +1718,7 @@ function refreshGraph(){
     .then(function(data){
       var loading = document.getElementById('loading');
       if(loading) loading.classList.add('hidden');
+      if(window.__setTourSteps) window.__setTourSteps(data.tourSteps);
       buildDiagram(data.elements);
       if(refreshBtn){ refreshBtn.disabled=false; refreshBtn.style.opacity='1'; }
     })
