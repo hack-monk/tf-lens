@@ -52,33 +52,3 @@ func (s Severity) Weight() int {
 	}
 	return 0
 }
-
-// SeverityColor returns the hex color for UI display.
-func (s Severity) Color() string {
-	switch s {
-	case SeverityCritical:
-		return "#C53030" // red
-	case SeverityHigh:
-		return "#C05621" // orange
-	case SeverityMedium:
-		return "#975A16" // amber
-	case SeverityInfo:
-		return "#2B6CB0" // blue
-	}
-	return "#718096"
-}
-
-// SeverityIcon returns an emoji icon for terminal output.
-func (s Severity) Icon() string {
-	switch s {
-	case SeverityCritical:
-		return "🔴"
-	case SeverityHigh:
-		return "🟠"
-	case SeverityMedium:
-		return "🟡"
-	case SeverityInfo:
-		return "🔵"
-	}
-	return "⚪"
-}

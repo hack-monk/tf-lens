@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -15,92 +16,74 @@ import (
 	"github.com/hack-monk/tf-lens/internal/flow"
 	"github.com/hack-monk/tf-lens/internal/glossary"
 	"github.com/hack-monk/tf-lens/internal/graph"
-	"github.com/hack-monk/tf-lens/internal/icons"
 	"github.com/hack-monk/tf-lens/internal/server"
 	"github.com/hack-monk/tf-lens/internal/threat"
-	"github.com/spf13/cobra"
 )
 
 var (
-	servePort      int
-	servePlan      string
-	serveState     string
-	serveDiff      string
-	serveNoOpen    bool
-	serveThreat    bool
-	serveCost      string
-	serveDriftPath string
+	servePort        int
+	servePlan        string
+	serveState       string
+	serveDiff        string
+	serveNoOpen      bool
+	serveThreat      bool
+	serveCost        string
+	serveDriftPath   string
 	serveWatch       bool
 	serveFlow        bool
 	serveAnnotations string
 )
 
-var serveCmd = &cobra.Command{
-	Use:   "serve",
-	Short: "Start a local HTTP server with an interactive diagram",
-	Long: `Starts a local HTTP server and opens the diagram in your default browser.
-The diagram is loaded dynamically from the server — click Refresh to reload
-after changing your Terraform files.
-
-Use --watch to automatically reload the diagram when input files change.
-
-Examples:
-  tf-lens serve --plan plan.json
-  tf-lens serve --plan plan.json --watch
-  tf-lens serve --state terraform.tfstate --port 8080
-  tf-lens serve --plan new.json --diff old.json
-  tf-lens serve --plan plan.json --no-open`,
-
-	RunE: func(cmd *cobra.Command, args []string) error {
-		// ── 1. Build initial graph ────────────────────────────────────────────
-		g, err := buildServeGraph()
-		if err != nil {
-			return err
-		}
-
-		// ── 2. Start server ───────────────────────────────────────────────────
-		resolver := icons.NewResolver("") // icons not needed in serve mode
-		srv := server.New(servePort, g, resolver)
-
-		// ── 3. Watch mode (optional) ──────────────────────────────────────────
-		if serveWatch {
-			watchPaths := collectWatchPaths()
-			if len(watchPaths) == 0 {
-				return fmt.Errorf("--watch requires --plan or --state to specify files to watch")
-			}
-			go watchFiles(srv, watchPaths)
-		}
-
-		// Open browser after a short delay so the server is ready
-		if !serveNoOpen {
-			url := fmt.Sprintf("http://localhost:%d", servePort)
-			go func() {
-				time.Sleep(200 * time.Millisecond)
-				openBrowser(url)
-			}()
-		}
-
-		return srv.Serve()
-	},
-}
-
-func init() {
-	serveCmd.Flags().IntVar(&servePort, "port", 7777, "Port for the local HTTP server")
-	serveCmd.Flags().StringVar(&servePlan, "plan", "", "Path to terraform show -json plan output")
-	serveCmd.Flags().StringVar(&serveState, "state", "", "Path to terraform.tfstate file")
-	serveCmd.Flags().StringVar(&serveDiff, "diff", "", "Base plan/state to diff against (enables diff mode)")
-	serveCmd.Flags().BoolVar(&serveNoOpen, "no-open", false, "Don't open the browser automatically")
-	serveCmd.Flags().BoolVar(&serveThreat, "threat", false, "Run threat modelling analysis and overlay findings")
-	serveCmd.Flags().StringVar(&serveCost, "cost", "",
+// runServe starts a local HTTP server and opens the diagram in the default
+// browser. With --watch, the diagram reloads when input files change.
+func runServe(args []string) error {
+	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	fs.IntVar(&servePort, "port", 7777, "Port for the local HTTP server")
+	fs.StringVar(&servePlan, "plan", "", "Path to terraform show -json plan output")
+	fs.StringVar(&serveState, "state", "", "Path to terraform.tfstate file")
+	fs.StringVar(&serveDiff, "diff", "", "Base plan/state to diff against (enables diff mode)")
+	fs.BoolVar(&serveNoOpen, "no-open", false, "Don't open the browser automatically")
+	fs.BoolVar(&serveThreat, "threat", false, "Run threat modelling analysis and overlay findings")
+	fs.StringVar(&serveCost, "cost", "",
 		"Cost overlay: path to Infracost JSON file, or Terraform directory to auto-run infracost")
-	serveCmd.Flags().StringVar(&serveDriftPath, "drift", "",
+	fs.StringVar(&serveDriftPath, "drift", "",
 		"Drift detection: refresh-only plan JSON, or Terraform dir to auto-run terraform plan -refresh-only")
-	serveCmd.Flags().BoolVar(&serveWatch, "watch", false,
+	fs.BoolVar(&serveWatch, "watch", false,
 		"Watch input files for changes and auto-reload the diagram")
-	serveCmd.Flags().BoolVar(&serveFlow, "flow", false,
+	fs.BoolVar(&serveFlow, "flow", false,
 		"Infer and overlay runtime traffic/data flow paths")
-	serveCmd.Flags().StringVar(&serveAnnotations, "annotations", "",
+	fs.StringVar(&serveAnnotations, "annotations", "",
 		"Path to tf-lens.yaml annotation file with human-readable labels and tour steps")
+	fs.Parse(args)
+
+	// ── 1. Build initial graph ────────────────────────────────────────────
+	g, err := buildServeGraph()
+	if err != nil {
+		return err
+	}
+
+	// ── 2. Start server ───────────────────────────────────────────────────
+	srv := server.New(servePort, g)
+
+	// ── 3. Watch mode (optional) ──────────────────────────────────────────
+	if serveWatch {
+		watchPaths := collectWatchPaths()
+		if len(watchPaths) == 0 {
+			return fmt.Errorf("--watch requires --plan or --state to specify files to watch")
+		}
+		go watchFiles(srv, watchPaths)
+	}
+
+	// Open browser after a short delay so the server is ready
+	if !serveNoOpen {
+		url := fmt.Sprintf("http://localhost:%d", servePort)
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			openBrowser(url)
+		}()
+	}
+
+	return srv.Serve()
 }
 
 // buildServeGraph runs the full pipeline: parse → build → diff → threat → cost → drift.

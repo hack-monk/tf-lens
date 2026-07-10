@@ -20,7 +20,7 @@ EXPANDCOLLAPSE_JS := $(BUNDLE_DIR)/cytoscape-expand-collapse.min.js
 
 .PHONY: all build bundle bundle-check test test-ci lint \
         build-linux build-darwin build-darwin-amd64 build-windows build-all \
-        check-binary-size check-icon-count clean clean-bundle install help
+        check-binary-size clean clean-bundle install help
 
 ## help: Show available targets
 help:
@@ -108,13 +108,6 @@ check-binary-size: build
 	echo "Binary size: $$(echo $$size | awk '{printf "%.1f MB", $$1/1048576}') (limit: 25 MB)"; \
 	if [ "$$size" -gt "$$limit" ]; then echo "❌ Binary exceeds 25 MB!"; exit 1; \
 	else echo "✅ Binary size OK"; fi
-
-## check-icon-count: Fail if fewer than 25 icons exist
-check-icon-count:
-	@count=$$(ls internal/icons/svg/*.svg 2>/dev/null | wc -l | tr -d ' '); \
-	echo "Icon count: $$count (minimum: 25)"; \
-	if [ "$$count" -lt 25 ]; then echo "❌ Fewer than 25 icons!"; exit 1; \
-	else echo "✅ Icon count OK"; fi
 
 # ── Housekeeping ──────────────────────────────────────────────────────────────
 

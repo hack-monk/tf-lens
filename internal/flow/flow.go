@@ -10,6 +10,7 @@
 package flow
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/hack-monk/tf-lens/internal/graph"
@@ -66,7 +67,7 @@ func Infer(g *graph.Graph) []Edge {
 		lbSubnets := attrStringList(lb.Attributes, "subnets")
 		for _, inst := range byType["aws_instance"] {
 			instSubnet := attrString(inst.Attributes, "subnet_id")
-			if instSubnet != "" && containsStr(lbSubnets, instSubnet) {
+			if instSubnet != "" && slices.Contains(lbSubnets, instSubnet) {
 				addEdge(lb.ID, inst.ID, "HTTP/HTTPS", "ingress")
 			}
 		}
@@ -238,15 +239,6 @@ func attrStringList(attrs map[string]any, key string) []string {
 		}
 	}
 	return result
-}
-
-func containsStr(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 // extractEnvVars pulls environment variable keys and values from a Lambda function.

@@ -16,13 +16,12 @@ import (
 	"time"
 
 	"github.com/hack-monk/tf-lens/internal/graph"
-	"github.com/hack-monk/tf-lens/internal/icons"
+	"github.com/hack-monk/tf-lens/internal/renderer"
 )
 
 // Server holds the running state for the diagram HTTP server.
 type Server struct {
-	port     int
-	resolver *icons.Resolver
+	port int
 
 	mu       sync.RWMutex
 	g        *graph.Graph
@@ -34,14 +33,13 @@ type Server struct {
 }
 
 // New creates a Server. Call Serve() to start listening.
-func New(port int, g *graph.Graph, resolver *icons.Resolver) *Server {
+func New(port int, g *graph.Graph) *Server {
 	s := &Server{
-		port:     port,
-		g:        g,
-		resolver: resolver,
-		subs:     make(map[chan struct{}]struct{}),
+		port: port,
+		g:    g,
+		subs: make(map[chan struct{}]struct{}),
 	}
-	s.elements = buildElements(g)
+	s.elements = graph.BuildElements(g)
 	return s
 }
 
@@ -49,7 +47,7 @@ func New(port int, g *graph.Graph, resolver *icons.Resolver) *Server {
 func (s *Server) Reload(g *graph.Graph) {
 	s.mu.Lock()
 	s.g = g
-	s.elements = buildElements(g)
+	s.elements = graph.BuildElements(g)
 	s.mu.Unlock()
 
 	s.notifySubs()
@@ -111,7 +109,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
-	fmt.Fprint(w, serveHTML)
+	if err := renderer.ServeHTML(w); err != nil {
+		log.Printf("error rendering page: %v", err)
+	}
 }
 
 // handleGraph returns the graph elements as JSON.

@@ -132,7 +132,6 @@ tf-lens export [flags]
   --flow        Infer and overlay runtime traffic/data flow paths
   --annotations Path to tf-lens.yaml annotation file (human labels, tour steps)
   --format      Output format: html (default), json, or threats
-  --icon-dir    Directory with custom SVG icons (optional)
 ```
 
 ### Serve mode
@@ -417,9 +416,9 @@ tf-lens export --plan plan.json --threat --format threats --out report.md
 
 ---
 
-## Icon System
+## Colour System
 
-TF-Lens ships with 25+ custom SVGs, colour-coded by AWS service category:
+Nodes are colour-coded by AWS service category:
 
 | Colour | Category | Examples |
 |---|---|---|
@@ -429,15 +428,13 @@ TF-Lens ships with 25+ custom SVGs, colour-coded by AWS service category:
 | 🔴 Red | Security & IAM | Security Group, IAM Role, KMS, Secrets Manager |
 | 🟣 Purple | Messaging | SNS, SQS, API Gateway, CloudWatch |
 
-Want to use the official AWS architecture icons? See [docs/icon-dir.md](docs/icon-dir.md).
-
 ---
 
 ## Architecture
 
 ```
 tf-lens/
-├── cmd/               # Cobra CLI commands (export, serve, version)
+├── cmd/               # CLI commands (export, serve, version) — stdlib flag
 ├── internal/
 │   ├── parser/        # Terraform plan + state JSON parsing
 │   ├── graph/         # Node/edge model, VPC→Subnet nesting, module grouping
@@ -448,13 +445,11 @@ tf-lens/
 │   ├── flow/          # Runtime traffic/data flow inference engine
 │   ├── glossary/      # Built-in AWS service catalog (40+ types, one-liners)
 │   ├── annotations/   # tf-lens.yaml parsing and graph annotation
-│   ├── icons/         # SVG resolver (user dir → embed → prefix → fallback)
-│   ├── renderer/      # HTML/JSON/Markdown export with Cytoscape.js
+│   ├── renderer/      # Shared HTML template + JSON/Markdown export (Cytoscape.js)
 │   └── server/        # HTTP server with SSE live reload for serve mode
 ├── testdata/          # Synthetic Terraform plan fixtures
 └── docs/
-    ├── ci/            # GitHub Actions + GitLab CI templates
-    └── icon-dir.md    # Custom icon documentation
+    └── ci/            # GitHub Actions + GitLab CI templates
 ```
 
 Two-mode design:
@@ -471,7 +466,6 @@ Two-mode design:
 - [x] VPC → Subnet → Instance compound nesting
 - [x] Diff mode (added / removed / changed overlays)
 - [x] Threat modelling overlay (79 rules across 30 resource types)
-- [x] 25+ AWS service icons
 - [x] Search / filter
 - [x] Click-to-inspect detail panel
 - [x] Keyboard shortcuts (F, R, Esc, +/-, /, ?)
@@ -516,11 +510,10 @@ Two-mode design:
 
 ## Contributing
 
-The icon resolver and graph engine are provider-agnostic. Adding Azure or GCP support:
+The graph engine is provider-agnostic. Adding Azure or GCP support:
 
-1. Add SVG icons to `internal/icons/svg/` using the `<resource_type>.svg` naming convention
-2. Add nesting rules to `internal/graph/graph.go` for the provider's container hierarchy
-3. Add detection rules to `internal/threat/detector.go`
+1. Add nesting rules to `internal/graph/graph.go` for the provider's container hierarchy
+2. Add detection rules to `internal/threat/detector.go`
 
 Please open an issue before starting significant work.
 

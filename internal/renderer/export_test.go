@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/hack-monk/tf-lens/internal/graph"
-	"github.com/hack-monk/tf-lens/internal/icons"
 	"github.com/hack-monk/tf-lens/internal/renderer"
 )
 
@@ -20,8 +19,7 @@ func TestExportHTML_TourStepsEmbedded(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	resolver := icons.NewResolver("")
-	if err := renderer.ExportHTML(&buf, g, resolver); err != nil {
+	if err := renderer.ExportHTML(&buf, g); err != nil {
 		t.Fatalf("ExportHTML error: %v", err)
 	}
 	html := buf.String()
@@ -36,7 +34,7 @@ func TestExportHTML_TourStepsEmbedded(t *testing.T) {
 func TestExportHTML_DarkModeElements(t *testing.T) {
 	g := &graph.Graph{Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}}}
 	var buf bytes.Buffer
-	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	renderer.ExportHTML(&buf, g)
 	html := buf.String()
 	for _, want := range []string{"id=\"dark-toggle\"", "--bg-body", "id=\"dashboard\"", "doToggleDark"} {
 		if !strings.Contains(html, want) {
@@ -48,7 +46,7 @@ func TestExportHTML_DarkModeElements(t *testing.T) {
 func TestExportHTML_MinimapElements(t *testing.T) {
 	g := &graph.Graph{Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}}}
 	var buf bytes.Buffer
-	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	renderer.ExportHTML(&buf, g)
 	html := buf.String()
 	for _, want := range []string{"id=\"minimap\"", "id=\"minimap-vp\"", "initMinimap", "M"} {
 		if !strings.Contains(html, want) {
@@ -60,7 +58,7 @@ func TestExportHTML_MinimapElements(t *testing.T) {
 func TestExportHTML_SearchFilters(t *testing.T) {
 	g := &graph.Graph{Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}}}
 	var buf bytes.Buffer
-	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	renderer.ExportHTML(&buf, g)
 	html := buf.String()
 	for _, want := range []string{"id=\"filter-chips\"", "parseFilters", "type:", "owner:"} {
 		if !strings.Contains(html, want) {
@@ -72,7 +70,7 @@ func TestExportHTML_SearchFilters(t *testing.T) {
 func TestExportHTML_CollapsibleModules(t *testing.T) {
 	g := &graph.Graph{Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}}}
 	var buf bytes.Buffer
-	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	renderer.ExportHTML(&buf, g)
 	html := buf.String()
 	for _, want := range []string{"expandCollapse", "cytoscape-expand-collapse", "dblclick"} {
 		if !strings.Contains(html, want) {
@@ -89,7 +87,7 @@ func TestExportHTML_GuidedTour(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	renderer.ExportHTML(&buf, g)
 	html := buf.String()
 	for _, want := range []string{"id=\"tour-overlay\"", "startTour", "nextTourStep", "Start Tour"} {
 		if !strings.Contains(html, want) {
@@ -114,7 +112,7 @@ func TestExportHTML_ContextPanel(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	renderer.ExportHTML(&buf, g, icons.NewResolver(""))
+	renderer.ExportHTML(&buf, g)
 	html := buf.String()
 	for _, want := range []string{"humanLabel", "glossaryName", "glossaryOneLiner", "docsURL", "owner"} {
 		if !strings.Contains(html, want) {
@@ -130,8 +128,7 @@ func TestExportHTML_EmptyTourSteps(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	resolver := icons.NewResolver("")
-	if err := renderer.ExportHTML(&buf, g, resolver); err != nil {
+	if err := renderer.ExportHTML(&buf, g); err != nil {
 		t.Fatalf("ExportHTML error: %v", err)
 	}
 	html := buf.String()

@@ -9,7 +9,6 @@ import (
 	"text/template"
 
 	"github.com/hack-monk/tf-lens/internal/graph"
-	"github.com/hack-monk/tf-lens/internal/icons"
 )
 
 // ExportThreats writes a threat findings report in markdown table format.
@@ -192,7 +191,7 @@ type jsonDiffSummary struct {
 	Updated int `json:"updated"`
 }
 
-func ExportHTML(w io.Writer, g *graph.Graph, resolver *icons.Resolver) error {
+func ExportHTML(w io.Writer, g *graph.Graph) error {
 	elements := graph.BuildElements(g)
 	elemJSON, err := json.MarshalIndent(elements, "", "  ")
 	if err != nil {
@@ -247,10 +246,23 @@ func loadBundledJS() (string, bool) {
 // ── Template ─────────────────────────────────────────────────────────────────
 
 type templateData struct {
-	Elements      string
+	Serve         bool   // true: page fetches /api/graph + SSE reload; false: data baked in
+	Elements      string // JSON element array (export mode only)
 	Offline       bool
 	InlineJS      string
 	TourStepsJSON string // JSON array of tour steps; "[]" when none
+}
+
+// ServeHTML writes the serve-mode page: same UI as export, but graph data is
+// fetched from /api/graph and auto-reloaded via the /api/events SSE stream.
+func ServeHTML(w io.Writer) error {
+	inlineJS, offline := loadBundledJS()
+	return htmlTemplate.Execute(w, templateData{
+		Serve:         true,
+		TourStepsJSON: "[]",
+		Offline:       offline,
+		InlineJS:      inlineJS,
+	})
 }
 
 var htmlTemplate = template.Must(template.New("d").Parse(htmlSrc))
@@ -260,7 +272,7 @@ const htmlSrc = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TF-Lens</title>
+<title>TF-Lens{{if .Serve}} — Live{{end}}</title>
 <style>
 :root{
   --bg-body:#F0F2F5;--bg-bar:#232F3E;--bg-panel:#FFFFFF;--bg-card:#FFFFFF;
@@ -656,6 +668,27 @@ body{
   font-size:11px;font-weight:700;font-family:ui-monospace,monospace;color:#2D3748;
 }
 .kdesc{font-size:12px;color:#4A5568}
+
+/* ── Serve mode: live dot, refresh button, loading overlay ── */
+.live-dot{
+  width:7px;height:7px;border-radius:50%;background:#38A169;
+  animation:pulse 2s ease-in-out infinite;flex-shrink:0;
+}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.85)}}
+.btn-refresh:hover{background:#38A169;border-color:#38A169;color:#FFF}
+#loading{
+  position:absolute;inset:0;background:#F0F2F5;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;z-index:200;transition:opacity .3s;
+}
+#loading.hidden{opacity:0;pointer-events:none}
+.spinner{
+  width:40px;height:40px;border:3px solid #E2E8F0;
+  border-top-color:#FF9900;border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading p{font-size:13px;color:#718096}
 </style>
 </head>
 <body>
@@ -664,6 +697,7 @@ body{
   <div id="logo">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF9900" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     TF-Lens
+    {{if .Serve}}<div class="live-dot" title="Live server"></div>{{end}}
   </div>
   <div class="sw">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -676,12 +710,18 @@ body{
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
       Fit
     </button>
-    <button class="btn" onclick="cy.zoom(cy.zoom()*1.3)" title="+">
+    <button class="btn" onclick="cy&&cy.zoom(cy.zoom()*1.3)" title="+">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
     </button>
-    <button class="btn" onclick="cy.zoom(cy.zoom()*.77)" title="-">
+    <button class="btn" onclick="cy&&cy.zoom(cy.zoom()*.77)" title="-">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
     </button>
+    {{if .Serve}}
+    <button class="btn btn-refresh" onclick="refreshGraph()" title="Reload graph from server">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+      Refresh
+    </button>
+    {{end}}
   </div>
   <div class="vsp"></div>
   <div class="bg" id="view-toggle" style="display:none">
@@ -718,6 +758,12 @@ body{
 <div id="filter-chips" style="display:none"></div>
 
 <div id="cy" style="position:relative"></div>
+{{if .Serve}}
+<div id="loading">
+  <div class="spinner"></div>
+  <p>Loading infrastructure diagram…</p>
+</div>
+{{end}}
 <button id="minimap-toggle" onclick="toggleMinimap()" title="M">⊞ Map</button>
 <div id="minimap" style="display:none">
   <canvas id="minimap-canvas"></canvas>
@@ -771,6 +817,7 @@ body{
     <div class="krow"><span class="kdesc">Fit diagram to screen</span><span class="kkey">F</span></div>
     <div class="krow"><span class="kdesc">Zoom in</span><span class="kkey">+</span></div>
     <div class="krow"><span class="kdesc">Zoom out</span><span class="kkey">-</span></div>
+    {{if .Serve}}<div class="krow"><span class="kdesc">Refresh graph</span><span class="kkey">R</span></div>{{end}}
     <div class="krow"><span class="kdesc">Clear selection & search</span><span class="kkey">Esc</span></div>
     <div class="krow"><span class="kdesc">Focus search box</span><span class="kkey">/</span></div>
     <div class="krow"><span class="kdesc">Show this help</span><span class="kkey">?</span></div>
@@ -811,8 +858,12 @@ var CAT={
   unknown:   {label:'Unknown',   color:'#A0AEC0',badge:'bu'},
 };
 
-var ELEMENTS = {{.Elements}};
 var TOUR_STEPS = {{.TourStepsJSON}};
+
+// Current cytoscape instance — rebuilt on every buildDiagram() call.
+// null until the first build (serve mode fetches data asynchronously).
+var cy = null;
+var ecApi = null;
 
 // ── Dark mode ────────────────────────────────────────────────────────────
 (function(){
@@ -830,8 +881,13 @@ window.doToggleDark = function(){
   if(btn) btn.textContent = document.body.classList.contains('dark') ? '🌙' : '☀';
 })();
 
-// ── Cytoscape styles: layout geometry only, no visuals on leaf nodes ──────
-var cy = cytoscape({
+// ── Build / rebuild the diagram from an element array ─────────────────────
+function buildDiagram(ELEMENTS){
+if(cy){ cy.destroy(); cy = null; }
+document.querySelectorAll('.cl').forEach(function(el){ el.remove(); });
+
+// Cytoscape styles: layout geometry only, no visuals on leaf nodes
+cy = cytoscape({
   container: document.getElementById('cy'),
   elements: ELEMENTS,
   style: [
@@ -958,7 +1014,7 @@ if(typeof cy.nodeHtmlLabel === 'function'){
 }
 
 // ── Expand-collapse extension ─────────────────────────────────────────────
-var ecApi = null;
+ecApi = null;
 if(typeof cy.expandCollapse === 'function'){
   ecApi = cy.expandCollapse({
     layoutBy: {name:'dagre',rankDir:'TB',nodeSep:50,rankSep:80},
@@ -1030,6 +1086,7 @@ renderContainerLabels();
 (function(){
   var dash = document.getElementById('dashboard');
   if(!dash) return;
+  dash.innerHTML = '';
 
   var leafCount = cy.nodes().filter(function(n){ return !n.isParent(); }).length;
   var modCount  = cy.nodes().filter(function(n){ return n.data('type')==='module'; }).length;
@@ -1112,6 +1169,8 @@ if(hasDiff){
   document.getElementById('db-rc').textContent = diffCounts.removed;
   document.getElementById('db-uc').textContent = diffCounts.updated;
   document.getElementById('diffbar').classList.add('show');
+} else {
+  document.getElementById('diffbar').classList.remove('show');
 }
 
 // ── Threat summary statusbar pill ─────────────────────────────────────
@@ -1122,9 +1181,11 @@ ELEMENTS.forEach(function(el){
   }
 });
 var totalThreats = tc.critical + tc.high + tc.medium;
+var oldThreatPill = document.getElementById('threat-pill');
+if(oldThreatPill) oldThreatPill.remove();
 if(totalThreats > 0){
   var tp = document.createElement('div');
-  tp.className = 'sp';
+  tp.className = 'sp'; tp.id = 'threat-pill';
   var parts = [];
   if(tc.critical>0) parts.push('<span style="color:#C53030;font-weight:700">🔴 '+tc.critical+'</span>');
   if(tc.high>0)     parts.push('<span style="color:#C05621;font-weight:700">🟠 '+tc.high+'</span>');
@@ -1138,9 +1199,11 @@ var totalCost = 0;
 ELEMENTS.forEach(function(el){
   if(el.group==='nodes' && el.data.monthlyCost) totalCost += el.data.monthlyCost;
 });
+var oldCostPill = document.getElementById('cost-pill');
+if(oldCostPill) oldCostPill.remove();
 if(totalCost > 0){
   var cp = document.createElement('div');
-  cp.className = 'sp';
+  cp.className = 'sp'; cp.id = 'cost-pill';
   cp.innerHTML = '💰&nbsp; <b>' + fmtCost(totalCost) + '</b>/mo';
   document.getElementById('sb').appendChild(cp);
 }
@@ -1150,9 +1213,11 @@ var driftCount = 0;
 ELEMENTS.forEach(function(el){
   if(el.group==='nodes' && el.data.driftStatus) driftCount++;
 });
+var oldDriftPill = document.getElementById('drift-pill');
+if(oldDriftPill) oldDriftPill.remove();
 if(driftCount > 0){
   var dp = document.createElement('div');
-  dp.className = 'sp';
+  dp.className = 'sp'; dp.id = 'drift-pill';
   dp.innerHTML = '🔀&nbsp; <b style="color:#9F7AEA">'+driftCount+'</b> drifted';
   document.getElementById('sb').appendChild(dp);
 }
@@ -1169,10 +1234,32 @@ function showZoom(){
 }
 cy.on('zoom', showZoom);
 
-// ── Fit ──────────────────────────────────────────────────────────────────
-function fitG(){ cy.fit(undefined, 60); }
-window.fitG = fitG;
+// ── Per-graph event bindings ─────────────────────────────────────────────
+cy.on('tap','node',function(evt){
+  var n = evt.target;
+  if(n.isParent()) return;
+  highlight(n);
+  openPanel(n.data());
+  document.getElementById('sh').style.display = '';
+});
+cy.on('tap',function(evt){
+  if(evt.target===cy){ clearSel(); closePanel(); document.getElementById('sh').style.display='none'; }
+});
+cy.on('pan zoom', function(){ if(minimapVisible) initMinimap(); });
+
+// Flow view toggle visibility
+var hasFlow = ELEMENTS.some(function(el){ return el.group==='edges' && el.data.flow; });
+document.getElementById('view-toggle').style.display = hasFlow ? '' : 'none';
+document.getElementById('view-sep').style.display = hasFlow ? '' : 'none';
+document.getElementById('flow-legend').style.display = hasFlow ? '' : 'none';
+
 setTimeout(fitG, 80);
+}
+// ── end buildDiagram ──────────────────────────────────────────────────────
+
+// ── Fit ──────────────────────────────────────────────────────────────────
+function fitG(){ if(cy) cy.fit(undefined, 60); }
+window.fitG = fitG;
 
 // ── Selection ────────────────────────────────────────────────────────────
 var selId = null;
@@ -1188,23 +1275,10 @@ function highlight(node){
 }
 
 function clearSel(){
-  cy.elements().removeClass('faded edge-hl');
+  if(cy) cy.elements().removeClass('faded edge-hl');
   document.querySelectorAll('.nc--sel').forEach(function(el){ el.classList.remove('nc--sel'); });
   selId = null;
 }
-
-// ── Events ───────────────────────────────────────────────────────────────
-cy.on('tap','node',function(evt){
-  var n = evt.target;
-  if(n.isParent()) return;
-  highlight(n);
-  openPanel(n.data());
-  document.getElementById('sh').style.display = '';
-});
-
-cy.on('tap',function(evt){
-  if(evt.target===cy){ clearSel(); closePanel(); document.getElementById('sh').style.display='none'; }
-});
 
 // ── Panel ────────────────────────────────────────────────────────────────
 window.openPanel = function(d){
@@ -1383,6 +1457,7 @@ function renderFilterChips(filters){
 }
 
 window.doSearch = function(q){
+  if(!cy) return;
   clearSel();
   var raw = (q||'').trim();
   var qx  = document.getElementById('qx');
@@ -1415,7 +1490,7 @@ window.clearSearch = function(){
   document.getElementById('qx').style.display = 'none';
   document.getElementById('qc').style.display = 'none';
   document.getElementById('filter-chips').style.display = 'none';
-  cy.elements().removeClass('faded');
+  if(cy) cy.elements().removeClass('faded');
 };
 
 // ── Help overlay ─────────────────────────────────────────────────────────
@@ -1438,20 +1513,14 @@ document.addEventListener('keydown',function(e){
     document.getElementById('sh').style.display='none';
   }
   if(e.key==='f'||e.key==='F') fitG();
-  if(e.key==='+'||e.key==='=') cy.zoom(cy.zoom()*1.3);
-  if(e.key==='-') cy.zoom(cy.zoom()*.77);
+  if((e.key==='r'||e.key==='R') && window.refreshGraph) refreshGraph();
+  if(e.key==='+'||e.key==='=') cy&&cy.zoom(cy.zoom()*1.3);
+  if(e.key==='-') cy&&cy.zoom(cy.zoom()*.77);
   if(e.key==='/'){e.preventDefault(); document.getElementById('q').focus();}
   if(e.key==='?') toggleHelp();
 });
 
 // ── Flow view toggle ─────────────────────────────────────────────────────
-var hasFlow = ELEMENTS.some(function(el){ return el.group==='edges' && el.data.flow; });
-if(hasFlow){
-  document.getElementById('view-toggle').style.display='';
-  document.getElementById('view-sep').style.display='';
-  document.getElementById('flow-legend').style.display='';
-}
-
 var currentView = 'deps';
 window.setView = function(view){
   currentView = view;
@@ -1464,6 +1533,7 @@ window.setView = function(view){
   btnFlow.style.cssText = view==='flow' ? active : inactive;
   btnBoth.style.cssText = view==='both' ? active : inactive;
 
+  if(!cy) return;
   cy.edges().forEach(function(e){
     var isFlow = e.data('flow');
     e.removeClass('flow-hidden dep-hidden');
@@ -1508,6 +1578,7 @@ window.toggleMinimap = function(){
 
 function initMinimap(){ drawMinimap(); }
 function drawMinimap(){
+  if(!cy) return;
   var canvas = document.getElementById('minimap-canvas');
   if(!canvas) return;
   var mm = document.getElementById('minimap');
@@ -1550,8 +1621,6 @@ function drawMinimap(){
   vp.style.height = Math.min(vph, canvas.height) + 'px';
 }
 
-cy.on('pan zoom', function(){ if(minimapVisible) initMinimap(); });
-
 document.addEventListener('keydown', function(e){
   if(e.target.matches('input')) return;
   if(e.key === 'm' || e.key === 'M') toggleMinimap();
@@ -1574,7 +1643,7 @@ document.addEventListener('keydown', function(e){
   }
 
   function showStep(idx){
-    if(idx < 0 || idx >= steps.length) return;
+    if(!cy || idx < 0 || idx >= steps.length) return;
     cur = idx;
     var s = steps[idx];
     document.getElementById('tour-step-num').textContent = 'Step '+(idx+1)+' of '+steps.length;
@@ -1604,7 +1673,7 @@ document.addEventListener('keydown', function(e){
 
   window.exitTour = function(){
     document.getElementById('tour-overlay').classList.remove('active');
-    cy.elements().removeClass('faded tour-spotlight');
+    if(cy) cy.elements().removeClass('faded tour-spotlight');
     history.replaceState(null,'','#');
   };
 
@@ -1622,6 +1691,53 @@ document.addEventListener('keydown', function(e){
     setTimeout(function(){ window.startTour(); }, 600);
   }
 })();
+
+{{if .Serve}}
+// ── Serve mode: fetch graph from server, rebuild on demand ───────────────
+function refreshGraph(){
+  var refreshBtn = document.querySelector('.btn-refresh');
+  if(refreshBtn){ refreshBtn.disabled=true; refreshBtn.style.opacity='0.5'; }
+
+  fetch('/api/graph')
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
+    .then(function(data){
+      var loading = document.getElementById('loading');
+      if(loading) loading.classList.add('hidden');
+      buildDiagram(data.elements);
+      if(refreshBtn){ refreshBtn.disabled=false; refreshBtn.style.opacity='1'; }
+    })
+    .catch(function(err){
+      console.error('Failed to load graph:', err);
+      document.getElementById('sc').innerHTML = '⚠️ Failed to load graph — check server';
+      if(refreshBtn){ refreshBtn.disabled=false; refreshBtn.style.opacity='1'; }
+    });
+}
+window.refreshGraph = refreshGraph;
+
+// SSE auto-reload: server pushes "reload" when watched files change
+(function(){
+  var es;
+  function connectSSE(){
+    es = new EventSource('/api/events');
+    es.addEventListener('reload', function(){
+      console.log('[tf-lens] File changed — reloading graph');
+      refreshGraph();
+    });
+    es.onerror = function(){
+      es.close();
+      setTimeout(connectSSE, 3000);
+    };
+  }
+  connectSSE();
+})();
+
+refreshGraph();
+{{else}}
+buildDiagram({{.Elements}});
+{{end}}
 
 })();
 </script>
