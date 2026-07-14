@@ -79,6 +79,26 @@ func TestExportHTML_CollapsibleModules(t *testing.T) {
 	}
 }
 
+func TestExportHTML_ImageExport(t *testing.T) {
+	g := &graph.Graph{Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}}}
+	var buf bytes.Buffer
+	renderer.ExportHTML(&buf, g)
+	html := buf.String()
+	for _, want := range []string{
+		`id="export-btn"`,
+		`id="export-menu"`,
+		"toggleExportMenu",
+		"exportImage",
+		"cy.png(",
+		"cy.svg(",
+		"tf-lens-graph.",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("HTML missing image export element: %s", want)
+		}
+	}
+}
+
 func TestExportHTML_GuidedTour(t *testing.T) {
 	g := &graph.Graph{
 		Nodes: []*graph.Node{{ID: "aws_alb.main", Type: "aws_alb", Name: "main", Category: graph.CategoryNetworking}},

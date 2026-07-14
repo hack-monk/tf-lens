@@ -426,6 +426,11 @@ body{
 .btn:hover{background:#4A5568;color:#F7FAFC;border-color:#4A5568}
 .btn-p:hover{background:#FF9900;border-color:#FF9900;color:#1A202C}
 .vsp{width:1px;height:20px;background:#2D3748;margin:0 4px;flex-shrink:0}
+.exp-wrap{position:relative}
+#export-menu{display:none;position:absolute;top:36px;left:0;background:#2D3748;border:1px solid #4A5568;border-radius:5px;overflow:hidden;z-index:20;min-width:70px}
+#export-menu.show{display:block}
+.export-item{padding:7px 12px;font-size:12px;color:#CBD5E0;cursor:pointer;white-space:nowrap}
+.export-item:hover{background:#4A5568;color:#F7FAFC}
 #leg{display:flex;align-items:center;margin-left:auto}
 .lg{display:flex;align-items:center;gap:10px;padding:0 10px}
 .lg+.lg{border-left:1px solid #2D3748}
@@ -723,6 +728,16 @@ body{
       Refresh
     </button>
     {{end}}
+    <div class="exp-wrap">
+      <button class="btn" id="export-btn" onclick="toggleExportMenu()" title="E">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+      <div id="export-menu">
+        <div class="export-item" onclick="exportImage('png')">PNG</div>
+        <div class="export-item" onclick="exportImage('svg')">SVG</div>
+      </div>
+    </div>
   </div>
   <div class="vsp"></div>
   <div class="bg" id="view-toggle" style="display:none">
@@ -823,6 +838,7 @@ body{
     <div class="krow"><span class="kdesc">Focus search box</span><span class="kkey">/</span></div>
     <div class="krow"><span class="kdesc">Show this help</span><span class="kkey">?</span></div>
     <div class="krow"><span class="kdesc">Toggle minimap</span><span class="kkey">M</span></div>
+    <div class="krow"><span class="kdesc">Export image</span><span class="kkey">E</span></div>
   </div>
 </div>
 
@@ -1520,6 +1536,7 @@ document.addEventListener('keydown',function(e){
   if(e.key==='-') cy&&cy.zoom(cy.zoom()*.77);
   if(e.key==='/'){e.preventDefault(); document.getElementById('q').focus();}
   if(e.key==='?') toggleHelp();
+  if(e.key==='e'||e.key==='E') toggleExportMenu();
 });
 
 // ── Flow view toggle ─────────────────────────────────────────────────────
@@ -1569,6 +1586,31 @@ window.setView = function(view){
     panel.style.transition = '';
   });
 })();
+
+// ── Image export ─────────────────────────────────────────────────────────
+window.toggleExportMenu = function(){
+  document.getElementById('export-menu').classList.toggle('show');
+};
+document.addEventListener('click', function(e){
+  var menu = document.getElementById('export-menu');
+  var btn = document.getElementById('export-btn');
+  if(menu && menu.classList.contains('show') && !menu.contains(e.target) && e.target !== btn){
+    menu.classList.remove('show');
+  }
+});
+window.exportImage = function(format){
+  if(!cy) return;
+  document.getElementById('export-menu').classList.remove('show');
+  var a = document.createElement('a');
+  if(format === 'svg'){
+    var svg = cy.svg({full: true, bg: null});
+    a.href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  } else {
+    a.href = cy.png({full: true, bg: null, scale: 2});
+  }
+  a.download = 'tf-lens-graph.' + format;
+  a.click();
+};
 
 // ── Minimap ──────────────────────────────────────────────────────────────
 var minimapVisible = false;
