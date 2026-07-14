@@ -226,6 +226,7 @@ func loadBundledJS() (string, bool) {
 		"cytoscape-dagre.min.js",
 		"cytoscape-node-html-label.min.js",
 		"cytoscape-expand-collapse.min.js",
+		"cytoscape-svg.min.js",
 	}
 	var combined []byte
 	for _, f := range files {
@@ -833,6 +834,7 @@ body{
 <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/cytoscape-node-html-label@1.2.1/dist/cytoscape-node-html-label.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/cytoscape-expand-collapse@4.1.0/cytoscape-expand-collapse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-svg@0.4.0/cytoscape-svg.min.js"></script>
 {{end}}
 
 <script>
