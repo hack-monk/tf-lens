@@ -60,6 +60,8 @@ TF-Lens parses Terraform plan and state files and renders them as clean, interac
 
 **Minimap** — canvas-based 180×120 px overview with viewport indicator; toggle with **M**
 
+**Image export** — export the diagram as PNG or SVG via the toolbar Export button or **E**; full graph, transparent background
+
 **Extended search** — filter by `type:`, `module:`, `threat:`, `owner:` with removable chip UI; plain text matches resource ID, human label, and description
 
 **Guided tour** — annotated walkthroughs with step overlay, resource spotlight, and URL hash deep-link (`#tour=1`)
@@ -468,7 +470,7 @@ Two-mode design:
 - [x] Threat modelling overlay (79 rules across 30 resource types)
 - [x] Search / filter
 - [x] Click-to-inspect detail panel
-- [x] Keyboard shortcuts (F, R, Esc, +/-, /, ?)
+- [x] Keyboard shortcuts (F, R, Esc, +/-, /, ?, E)
 - [x] Cost overlay (Infracost integration — file or auto-run)
 - [x] Detailed threat findings panel (title, detail, remediation per finding)
 - [x] State drift detection (manual AWS change detection with attribute-level diffs)
@@ -485,6 +487,7 @@ Two-mode design:
 - [x] Dark mode with localStorage persistence
 - [x] Summary dashboard (resource/module/overlay pills)
 - [x] Canvas minimap with viewport indicator (M key)
+- [x] PNG/SVG image export (toolbar button + E key)
 - [x] Extended search: `type:`, `module:`, `threat:`, `owner:` filters with chip UI
 - [x] Collapsible module groups (double-click to expand/collapse)
 - [x] Built-in AWS service glossary (40+ resource types)
