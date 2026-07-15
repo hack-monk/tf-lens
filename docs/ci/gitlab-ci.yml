@@ -42,6 +42,8 @@ tf-lens-diagram:
   script:
     - tf-lens export --plan plan.json --threat --out diagram.html
     - tf-lens export --plan plan.json --threat --format json --out diagram.json
+    # Uncomment to fail the pipeline on high/critical security findings:
+    # - tf-lens export --plan plan.json --threat --fail-on=high --out /dev/null
     - |
       NODES=$(jq '.nodeCount' diagram.json)
       EDGES=$(jq '.edgeCount' diagram.json)

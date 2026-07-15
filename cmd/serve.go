@@ -129,6 +129,8 @@ func buildServeGraph() (*graph.Graph, error) {
 		fmt.Printf("🔒  Threat model: %d critical, %d high, %d medium, %d info\n",
 			counts["critical"], counts["high"], counts["medium"], counts["info"])
 
+		// This error also flows through watchFiles()'s rebuild loop, which
+		// must keep treating it as non-fatal (log + keep serving old graph).
 		if err := checkThreatGate(serveFailOn, findings); err != nil {
 			return nil, err
 		}
@@ -153,6 +155,8 @@ func buildServeGraph() (*graph.Graph, error) {
 		drift.AnnotateGraph(g, drifted)
 		fmt.Printf("🔀  Drift: %d resources drifted from state\n", len(drifted))
 
+		// This error also flows through watchFiles()'s rebuild loop, which
+		// must keep treating it as non-fatal (log + keep serving old graph).
 		if err := checkDriftGate(serveFailOn, drifted); err != nil {
 			return nil, err
 		}
