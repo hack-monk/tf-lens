@@ -61,6 +61,11 @@ jobs:
             --format json \
             --out diagram.json
 
+      # Uncomment to fail the build on high/critical security findings:
+      # - name: Enforce Security Gate
+      #   run: |
+      #     ./tf-lens export --plan plan.json --threat --fail-on=high --out /dev/null
+
       - name: Build PR Comment
         id: comment
         run: |

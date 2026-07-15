@@ -32,6 +32,7 @@ var (
 	serveWatch       bool
 	serveFlow        bool
 	serveAnnotations string
+	serveFailOn      string
 )
 
 // runServe starts a local HTTP server and opens the diagram in the default
@@ -54,7 +55,13 @@ func runServe(args []string) error {
 		"Infer and overlay runtime traffic/data flow paths")
 	fs.StringVar(&serveAnnotations, "annotations", "",
 		"Path to tf-lens.yaml annotation file with human-readable labels and tour steps")
+	fs.StringVar(&serveFailOn, "fail-on", "",
+		"Exit 1 at startup if threat findings at/above this severity are found, or if any drift is detected: critical, high, medium, info (requires --threat)")
 	fs.Parse(args)
+
+	if err := validateFailOn(serveFailOn, serveThreat); err != nil {
+		return err
+	}
 
 	// ── 1. Build initial graph ────────────────────────────────────────────
 	g, err := buildServeGraph()
@@ -121,6 +128,12 @@ func buildServeGraph() (*graph.Graph, error) {
 		}
 		fmt.Printf("🔒  Threat model: %d critical, %d high, %d medium, %d info\n",
 			counts["critical"], counts["high"], counts["medium"], counts["info"])
+
+		// This error also flows through watchFiles()'s rebuild loop, which
+		// must keep treating it as non-fatal (log + keep serving old graph).
+		if err := checkThreatGate(serveFailOn, findings); err != nil {
+			return nil, err
+		}
 	}
 
 	if serveCost != "" {
@@ -141,6 +154,12 @@ func buildServeGraph() (*graph.Graph, error) {
 		}
 		drift.AnnotateGraph(g, drifted)
 		fmt.Printf("🔀  Drift: %d resources drifted from state\n", len(drifted))
+
+		// This error also flows through watchFiles()'s rebuild loop, which
+		// must keep treating it as non-fatal (log + keep serving old graph).
+		if err := checkDriftGate(serveFailOn, drifted); err != nil {
+			return nil, err
+		}
 	}
 
 	if serveFlow {

@@ -44,6 +44,8 @@ TF-Lens parses Terraform plan and state files and renders them as clean, interac
 
 **State drift detection** — detects manual AWS changes by comparing live cloud state against Terraform, highlights drifted resources with attribute-level diffs
 
+**CI severity gate** — `--fail-on=critical|high|medium|info` exits 1 if threat findings at/above that severity are found, or if `--drift` finds any drift at all (drift has no severity scale, so this is all-or-nothing regardless of the fail-on value) (requires `--threat`)
+
 **Traffic flow visualisation** — infers runtime traffic and data flow paths between resources (ALB→EC2, APIGW→Lambda, SQS→Lambda, etc.) with a toggleable overlay view
 
 **Watch mode** — `tf-lens serve --watch` auto-reloads the diagram when input files change, with SSE-powered browser refresh
@@ -474,6 +476,7 @@ Two-mode design:
 - [x] Cost overlay (Infracost integration — file or auto-run)
 - [x] Detailed threat findings panel (title, detail, remediation per finding)
 - [x] State drift detection (manual AWS change detection with attribute-level diffs)
+- [x] `--fail-on` CI exit-code gate (threat severity threshold + any-drift)
 - [x] Resizable detail panel (drag to adjust width)
 - [x] Keyboard shortcut help overlay (press ?)
 - [x] Search UX (clear button, result count, / to focus)
