@@ -28,6 +28,7 @@ var (
 	exportFormat      string
 	exportFlow        bool
 	exportAnnotations string
+	exportFailOn      string
 )
 
 // runExport parses a Terraform plan or state file and writes a standalone
@@ -51,7 +52,13 @@ func runExport(args []string) error {
 		"Infer and overlay runtime traffic/data flow paths")
 	fs.StringVar(&exportAnnotations, "annotations", "",
 		"Path to tf-lens.yaml annotation file with human-readable labels and tour steps")
+	fs.StringVar(&exportFailOn, "fail-on", "",
+		"Exit 1 if threat findings at/above this severity are found, or if any drift is detected: critical, high, medium, info (requires --threat)")
 	fs.Parse(args)
+
+	if err := validateFailOn(exportFailOn, exportThreat); err != nil {
+		return err
+	}
 
 	// ── 1. Parse primary input ────────────────────────────────────────────
 	resources, err := parseInput(exportPlan, exportState)
@@ -112,6 +119,10 @@ func runExport(args []string) error {
 			fmt.Println("    ✅ No issues found")
 		}
 		fmt.Println()
+
+		if err := checkThreatGate(exportFailOn, findings); err != nil {
+			return err
+		}
 	}
 
 	// ── 5. Cost overlay (optional) ──────────────────────────────────────
@@ -152,6 +163,10 @@ func runExport(args []string) error {
 			fmt.Printf("    Created:  %d\n", summary["create"])
 		}
 		fmt.Println()
+
+		if err := checkDriftGate(exportFailOn, drifted); err != nil {
+			return err
+		}
 	}
 
 	// ── 7. Flow inference (optional) ──────────────────────────────────────
